@@ -22,7 +22,7 @@ Add-ons run code on your machine. Read the labels.
    - `links`: at least `repo`. Optional: a page for your add-on.
 3. **Open a pull request.** Checks run on their own and tell you in plain words what to fix.
 4. **If the checks pass, it is merged and you are Listed.**
-5. **Want Verified?** Say so in the pull request. We read the code and run it on test inputs. Free for now.
+5. **Want Verified?** Say so in the pull request. We read the code and run it on test inputs.
 
 A new version of your add-on is a new pull request that changes `commit`. Nothing updates by itself.
 
@@ -31,7 +31,7 @@ A new version of your add-on is a new pull request that changes `commit`. Nothin
 - Only the owner of an add-on, or a major contributor, may submit it.
 - Pin a full commit. No branches, no tags.
 - No code that updates itself or downloads more code after install.
-- Say what it does on your machine: network use, shell commands, files it writes, models it downloads and their licences.
+- Say what it does: network use (including sending models off the user's machine), shell commands, files it writes, models it downloads and their licences.
 - Every model it uses needs its licence named in `addon.json`.
 - No compiled binaries we cannot read.
 - Don't impersonate AssetFurnace or another author.
