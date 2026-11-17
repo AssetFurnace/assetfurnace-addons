@@ -8,5 +8,6 @@
   "type": "tool",
   "tier": "listed",
   "runs": "local",
+  "picture": "pictures/pedestal.jpg",
   "links": {"repo": "https://github.com/AssetFurnace/pedestal-addon"}
 }

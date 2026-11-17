@@ -20,6 +20,8 @@ REPO_RE = re.compile(r"^https://(github\.com|gitlab\.com)/([\w.-]+)/([\w.-]+?)(\
 REQUIRED = ("id", "name", "repo", "commit", "author", "summary")
 TIERS = {"listed", "verified"}
 TYPES = {"tool", "app"}
+PICTURE_MAX_BYTES = 600_000
+PICTURE_MAGIC = {".png": b"\x89PNG\r\n\x1a\n", ".jpg": b"\xff\xd8\xff", ".jpeg": b"\xff\xd8\xff"}
 RUNS = {"local", "cloud"}
 
 
@@ -46,6 +48,25 @@ def check_entry(path: Path, data: object) -> list[str]:
         problems.append("type must be tool or app")
     if data.get("runs", "local") not in RUNS:
         problems.append("runs must be local or cloud")
+    if data.get("picture"):
+        problems.extend(check_picture(path, addon_id, str(data["picture"])))
+    return problems
+
+
+def check_picture(path: Path, addon_id: str, picture: str) -> list[str]:
+    """The picture must be one small PNG or JPG named after the add-on, in pictures/."""
+    match = re.fullmatch(r"pictures/([a-z0-9][a-z0-9_-]*)(\.png|\.jpg|\.jpeg)", picture)
+    if not match or match.group(1) != addon_id:
+        return [f"picture must be pictures/{addon_id}.png or pictures/{addon_id}.jpg"]
+    file = path.parent.parent / picture
+    if not file.is_file():
+        return [f"the picture {picture} is not in the pull request"]
+    data = file.read_bytes()
+    problems = []
+    if len(data) > PICTURE_MAX_BYTES:
+        problems.append(f"the picture is {len(data) // 1000} KB; keep it under {PICTURE_MAX_BYTES // 1000} KB")
+    if not data.startswith(PICTURE_MAGIC[match.group(2)]):
+        problems.append("the picture file is not a real PNG or JPG")
     return problems
 
 

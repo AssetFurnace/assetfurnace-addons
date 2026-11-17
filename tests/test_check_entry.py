@@ -49,3 +49,27 @@ def test_entry_and_addon_json_must_agree_on_runs():
     fetch = lambda url: json.dumps({"schema": 1, "id": "pedestal", "licence": "MIT", "tools": [{}], "runs": "cloud"})  # noqa: E731
     assert any("runs" in p for p in ce.check_manifest(GOOD, fetch=fetch))
     assert ce.check_manifest({**GOOD, "runs": "cloud"}, fetch=fetch) == []
+
+
+def _repo_with_picture(tmp_path, name, content):
+    (tmp_path / "addons").mkdir()
+    (tmp_path / "pictures").mkdir()
+    (tmp_path / "pictures" / name).write_bytes(content)
+    return tmp_path / "addons" / "pedestal.json"
+
+
+def test_picture_that_is_real_and_small_passes(tmp_path):
+    entry = _repo_with_picture(tmp_path, "pedestal.jpg", b"\xff\xd8\xff" + b"0" * 100)
+    assert ce.check_entry(entry, {**GOOD, "picture": "pictures/pedestal.jpg"}) == []
+
+
+def test_picture_must_exist_be_small_real_and_named_after_the_add_on(tmp_path):
+    entry = _repo_with_picture(tmp_path, "pedestal.png", b"not a png")
+    assert any("not a real" in p for p in ce.check_entry(entry, {**GOOD, "picture": "pictures/pedestal.png"}))
+    assert any("not in the pull request" in p for p in ce.check_entry(entry, {**GOOD, "picture": "pictures/pedestal.jpg"}))
+    assert any("must be pictures/pedestal" in p for p in ce.check_entry(entry, {**GOOD, "picture": "pictures/other.png"}))
+
+
+def test_picture_over_the_size_limit_is_refused(tmp_path):
+    entry = _repo_with_picture(tmp_path, "pedestal.png", b"\x89PNG\r\n\x1a\n" + b"0" * 700_000)
+    assert any("KB" in p for p in ce.check_entry(entry, {**GOOD, "picture": "pictures/pedestal.png"}))

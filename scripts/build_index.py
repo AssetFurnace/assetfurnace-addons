@@ -19,6 +19,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from check_entry import check_entry  # noqa: E402
 
 
+RAW = "https://raw.githubusercontent.com/AssetFurnace/assetfurnace-addons/main/"
+
+
 def build_index(entries_dir: Path) -> tuple[list[dict], list[str]]:
     """The combined list and any problems found. Problems mean the list must not be published."""
     entries: list[dict] = []
@@ -32,6 +35,8 @@ def build_index(entries_dir: Path) -> tuple[list[dict], list[str]]:
         found = check_entry(path, data)
         problems.extend(f"{path.name}: {problem}" for problem in found)
         if not found:
+            if data.get("picture"):
+                data = {**data, "picture": RAW + data["picture"]}  # consumers get a link, not a repo path
             entries.append(data)
     entries.sort(key=lambda entry: entry["id"])
     return entries, problems

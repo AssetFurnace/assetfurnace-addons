@@ -43,3 +43,13 @@ def test_main_writes_the_list_the_app_can_read(tmp_path):
     out = tmp_path / "index.json"
     assert bi.main(["--addons", str(tmp_path), "--out", str(out)]) == 0
     assert json.loads(out.read_text(encoding="utf-8"))[0]["id"] == "pedestal"
+
+
+def test_a_picture_becomes_a_link_in_the_index(tmp_path):
+    (tmp_path / "addons").mkdir()
+    (tmp_path / "pictures").mkdir()
+    (tmp_path / "pictures" / "pedestal.jpg").write_bytes(b"\xff\xd8\xff" + b"0" * 50)
+    write(tmp_path / "addons", entry("pedestal", picture="pictures/pedestal.jpg"))
+    entries, problems = bi.build_index(tmp_path / "addons")
+    assert problems == []
+    assert entries[0]["picture"] == bi.RAW + "pictures/pedestal.jpg"
