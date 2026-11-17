@@ -7,5 +7,6 @@
   "summary": "A round display stand from a height, a width and a number of steps.",
   "type": "tool",
   "tier": "listed",
+  "runs": "local",
   "links": {"repo": "https://github.com/AssetFurnace/pedestal-addon"}
 }

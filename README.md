@@ -19,6 +19,7 @@ Add-ons run code on your machine. Read the labels.
    - `id`, `name`, `summary`: the same as in your `addon.json`.
    - `repo`: your public GitHub link. `commit`: the full 40-character version code.
    - `author`: your name and a link to your page.
+   - `runs`: `local` (default) or `cloud`. Say `cloud` if it sends the user's models or pictures off their machine. It must match your `addon.json`.
    - `links`: at least `repo`. Optional: a page for your add-on.
 3. **Open a pull request.** Checks run on their own and tell you in plain words what to fix.
 4. **If the checks pass, it is merged and you are Listed.**

@@ -38,3 +38,14 @@ def test_manifest_must_agree_with_entry():
 def test_manifest_with_licence_and_tools_passes():
     fetch = lambda url: json.dumps({"schema": 1, "id": "pedestal", "licence": "MIT", "tools": [{}]})  # noqa: E731
     assert ce.check_manifest(GOOD, fetch=fetch) == []
+
+
+def test_runs_must_be_local_or_cloud():
+    assert any("local or cloud" in p for p in ce.check_entry(Path("addons/pedestal.json"), {**GOOD, "runs": "moon"}))
+    assert ce.check_entry(Path("addons/pedestal.json"), {**GOOD, "runs": "cloud"}) == []
+
+
+def test_entry_and_addon_json_must_agree_on_runs():
+    fetch = lambda url: json.dumps({"schema": 1, "id": "pedestal", "licence": "MIT", "tools": [{}], "runs": "cloud"})  # noqa: E731
+    assert any("runs" in p for p in ce.check_manifest(GOOD, fetch=fetch))
+    assert ce.check_manifest({**GOOD, "runs": "cloud"}, fetch=fetch) == []

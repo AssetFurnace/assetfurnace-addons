@@ -20,6 +20,7 @@ REPO_RE = re.compile(r"^https://(github\.com|gitlab\.com)/([\w.-]+)/([\w.-]+?)(\
 REQUIRED = ("id", "name", "repo", "commit", "author", "summary")
 TIERS = {"listed", "verified"}
 TYPES = {"tool", "app"}
+RUNS = {"local", "cloud"}
 
 
 def check_entry(path: Path, data: object) -> list[str]:
@@ -43,6 +44,8 @@ def check_entry(path: Path, data: object) -> list[str]:
         problems.append("tier must be listed or verified")
     if data.get("type", "tool") not in TYPES:
         problems.append("type must be tool or app")
+    if data.get("runs", "local") not in RUNS:
+        problems.append("runs must be local or cloud")
     return problems
 
 
@@ -70,6 +73,10 @@ def check_manifest(data: dict, fetch=None) -> list[str]:
         problems.append(f"addon.json says id {manifest.get('id')!r}, the entry says {data['id']!r}")
     if not manifest.get("licence"):
         problems.append("addon.json must name a licence")
+    if manifest.get("runs", "local") != data.get("runs", "local"):
+        problems.append(
+            f"addon.json says runs {manifest.get('runs', 'local')!r}, the entry says {data.get('runs', 'local')!r}"
+        )
     if not manifest.get("tools"):
         problems.append("addon.json must list at least one tool")
     return problems
