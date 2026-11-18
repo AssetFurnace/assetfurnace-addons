@@ -83,6 +83,13 @@ def test_someone_elses_id_is_not_overwritten(tmp_path):
     assert run(tmp_path, main_entry=other)["action"] == "hold"
 
 
+def test_claiming_a_hand_listed_add_on_waits_and_says_so(tmp_path):
+    unowned = {k: v for k, v in ENTRY.items() if k != "submitted_by"}
+    v = run(tmp_path, main_entry=unowned)
+    assert v["action"] == "hold"
+    assert "no owner yet" in v["message"] and "someone else" not in v["message"]
+
+
 def test_the_same_person_can_send_a_new_version(tmp_path):
     assert run(tmp_path, main_entry={**ENTRY, "commit": "b" * 40})["action"] == "merge"
 

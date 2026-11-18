@@ -78,6 +78,8 @@ def judge(author: str, bots: list[str], files: list[str], head: Path, main: Path
     before = read_json(main / entries[0])
     if isinstance(before, dict):
         was = before.get("submitted_by") or {}
+        if not was.get("github_id"):
+            return verdict("hold", f"The name {addon_id} was listed by hand and has no owner yet. This is its first claim, so a person has to check that {by.get('github_login')} owns the add-on.")
         if str(was.get("github_id")) != str(by.get("github_id")):
             return verdict("hold", f"The name {addon_id} already belongs to someone else, so a person has to look at this entry.")
         if before.get("tier") == "verified":
