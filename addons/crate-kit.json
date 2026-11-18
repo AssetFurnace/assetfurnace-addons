@@ -18,5 +18,10 @@
   "submitted_by": {
     "github_login": "Bingeljell",
     "github_id": "2819267"
+  },
+  "run_check": {
+    "status": "not_run",
+    "date": "2026-11-18",
+    "reason": "the tool fit needs a file as input, which we cannot give it"
   }
 }
