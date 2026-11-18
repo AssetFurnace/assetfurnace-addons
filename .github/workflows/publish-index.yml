@@ -1,6 +1,7 @@
 name: Publish index
 # After a merge, rebuild index.json (the file the studio reads) and commit it if it changed.
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths: ["addons/**", "scripts/build_index.py"]
