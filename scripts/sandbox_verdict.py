@@ -80,7 +80,7 @@ def judge(plan: dict, result_dir: Path) -> dict:
         return {"status": "failed", "reason": "", "problems": ["it did not install: its setup step failed or ran out of time"]}
     planned = [r["tool"] for r in plan["runs"]]
     if [r["tool"] for r in run["runs"]] != planned:
-        return {"status": "failed", "reason": "", "problems": ["not every tool was run"]}
+        return {"status": "failed", "reason": "", "problems": ["not every tool was run (it may have run out of time)"]}
     problems = []
     for r in run["runs"]:
         if r["exit"] != 0:
@@ -93,6 +93,9 @@ def judge(plan: dict, result_dir: Path) -> dict:
             path = result_dir / name
             if path.is_symlink() or not path.is_file():
                 problems.append(f"the tool {r['tool']} made no readable model")
+                continue
+            if path.stat().st_size > GLB_MAX_BYTES:
+                problems.append(f"the tool {r['tool']}: the model is over {GLB_MAX_BYTES // 1_000_000} MB")
                 continue
             problems.extend(f"the tool {r['tool']}: {p}" for p in check_glb(path.read_bytes()))
     return {"status": "failed" if problems else "passed", "reason": "", "problems": problems}

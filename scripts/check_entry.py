@@ -51,6 +51,8 @@ def check_entry(path: Path, data: object) -> list[str]:
     by = data.get("submitted_by")
     if by is not None and not (isinstance(by, dict) and by.get("github_login") and by.get("github_id")):
         problems.append("submitted_by needs github_login and github_id (the website writes it, do not add it by hand)")
+    if "verify_requested" in data and not isinstance(data["verify_requested"], bool):
+        problems.append("verify_requested must be true or false")
     check = data.get("run_check")
     if check is not None and not (isinstance(check, dict) and check.get("status") in ("passed", "not_run")):
         problems.append("run_check must say passed or not_run (the checks write it, do not add it by hand)")
@@ -93,6 +95,8 @@ def check_manifest(data: dict, fetch=None) -> list[str]:
         manifest = json.loads(fetch(url))
     except (urllib.error.URLError, ValueError) as exc:
         return [f"could not read addon.json at that commit: {exc}"]
+    if not isinstance(manifest, dict):
+        return ["addon.json must hold one JSON object"]
     problems = []
     if manifest.get("schema") != 1:
         problems.append("addon.json must have schema 1")

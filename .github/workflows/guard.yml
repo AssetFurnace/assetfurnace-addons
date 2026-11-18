@@ -31,7 +31,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           BOT_LOGINS: ${{ vars.BOT_LOGINS }}
-        run: scripts/ci_judge.sh "${{ github.event.pull_request.number }}" "${{ github.event.pull_request.user.login }}"
+        run: scripts/ci_judge.sh "${{ github.event.pull_request.number }}" "${{ github.event.pull_request.user.login }}" "${{ github.event.pull_request.head.sha }}"
       - name: Close (not from the website)
         if: steps.decide.outputs.action == 'close'
         env: { GH_TOKEN: "${{ github.token }}", PR: "${{ github.event.pull_request.number }}" }

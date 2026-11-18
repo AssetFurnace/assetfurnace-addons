@@ -123,36 +123,61 @@ def test_the_sandbox_cannot_skip_a_tool(tmp_path):
 
 def test_exec_installs_runs_and_collects_models(tmp_path):
     calls = []
+    progress = []
 
-    class Done:
-        def __init__(self, code=0): self.returncode, self.stdout, self.stderr = code, b"ok", b""
-
-    def runner(argv, env, **kw):
+    def runner(argv, env, seconds):
         calls.append(argv)
         if "run" in argv:
             d = Path(env["OUTPUT_DIR"]) / "cool"
             d.mkdir(parents=True, exist_ok=True)
             (d / "r.glb").write_bytes(glb())
-        return Done()
+        return 0, "ok"
 
     out = tmp_path / "out"
     out.mkdir()
-    res = ex.execute(PLAN, Path("/lab"), out, runner=runner)
+    res = ex.execute(PLAN, Path("/lab"), out, runner=runner, on_progress=lambda r: progress.append(json.loads(json.dumps(r))))
     assert res["install_exit"] == 0 and res["runs"][0]["files"] == ["run0-0.glb"]
     assert "--unlisted" in calls[0] and f"{ENTRY['repo']}@{ENTRY['commit']}" in calls[0]
     assert "height=1.05" in calls[1]
     assert (out / "run0-0.glb").is_file() and not (out / "work").exists()
+    assert progress[0]["install_exit"] == -1            # reported before anything ran
+    assert len(progress) == 3                           # before install, after install, after the tool
     (out / "run.json").write_text(json.dumps(res))
     assert sv.judge(PLAN, out)["status"] == "passed"
 
 
 def test_exec_stops_when_install_fails(tmp_path):
-    class Done:
-        returncode, stdout, stderr = 1, b"boom", b""
     out = tmp_path / "out"
     out.mkdir()
-    res = ex.execute(PLAN, Path("/lab"), out, runner=lambda *a, **k: Done())
+    res = ex.execute(PLAN, Path("/lab"), out, runner=lambda argv, env, seconds: (1, "boom"))
     assert res["install_exit"] == 1 and res["runs"] == []
+
+
+def test_exec_has_one_budget_and_skips_a_tool_it_has_no_time_for(tmp_path):
+    two = {**PLAN, "runs": PLAN["runs"] + [{"tool": "second", "inputs": {}}]}
+    seen = []
+    clock_value = {"t": 0.0}
+
+    def clock():
+        return clock_value["t"]
+
+    def runner(argv, env, seconds):
+        seen.append(seconds)
+        clock_value["t"] += 100 if "run" not in argv else 800   # the first tool eats nearly everything
+        return 0, ""
+
+    out = tmp_path / "out"
+    out.mkdir()
+    res = ex.execute(two, Path("/lab"), out, runner=runner, total=900, clock=clock)
+    assert [r["exit"] for r in res["runs"]] == [0, 124]          # the second tool never started
+    assert max(seen) <= ex.SETUP_SECONDS and seen[1] <= ex.RUN_SECONDS
+
+
+def test_a_time_out_kills_the_whole_process_group_and_reports_124():
+    import time as _t
+    start = _t.time()
+    code, _ = ex.popen_run(["sh", "-c", "sleep 30 & sleep 30"], {}, 1)   # a child that would keep the pipe open
+    assert code == 124 and _t.time() - start < 10
 
 
 # ---- recording the result
@@ -165,6 +190,7 @@ def test_only_passed_and_not_run_are_recorded_and_a_forged_record_is_replaced():
     forged = {**ENTRY, "run_check": {"status": "passed", "date": "1999-01-01"}}
     assert sr.record(forged, {"status": "not_run", "reason": "it downloads models"}, "2026-11-18")["run_check"] == {"status": "not_run", "date": "2026-11-18", "reason": "it downloads models"}
     assert sr.record(ENTRY, {"status": "passed"}, "2026-11-18")["run_check"] == {"status": "passed", "date": "2026-11-18"}
+    assert "verify_requested" not in sr.record({**ENTRY, "verify_requested": True}, {"status": "passed"}, "2026-11-18")
     try:
         sr.record(ENTRY, {"status": "failed"}, "2026-11-18")
         raise AssertionError("a failure must never be recorded")
@@ -181,3 +207,10 @@ def test_the_entry_checker_knows_run_check():
 def test_the_workflow_installs_the_blender_version_the_plan_assumes():
     text = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "sandbox.yml").read_text()
     assert f"Blender{sp.BLENDER}/" in text and f"blender-{sp.BLENDER}." in text
+
+
+def test_odd_json_gives_a_message_not_a_crash():
+    assert not sp.make_plan(ENTRY, ["not", "an", "object"])["runnable"]
+    assert not sp.make_plan(ENTRY, {"tools": "nope"})["runnable"]
+    assert not sp.make_plan(ENTRY, {"tools": ["x"]})["runnable"]
+    assert ce.check_manifest({"repo": "https://github.com/a/b.git", "commit": "a" * 40, "id": "x"}, fetch=lambda u: "[1, 2]") == ["addon.json must hold one JSON object"]

@@ -38,10 +38,11 @@ jobs:
           set -euo pipefail
           [ "$(gh pr view "$PR" --json state,headRefOid --jq '.state + .headRefOid')" = "OPEN$SHA" ] || { echo "The pull request changed or closed since it was checked."; exit 1; }
           AUTHOR=$(gh pr view "$PR" --json author --jq .author.login)
-          scripts/ci_judge.sh "$PR" "$AUTHOR"
+          scripts/ci_judge.sh "$PR" "$AUTHOR" "$SHA"
           [ "$(jq -r .action "$RUNNER_TEMP/verdict.json")" = "merge" ] || { echo "No longer a plain Listed submission."; exit 1; }
-          ID=$(ls "$RUNNER_TEMP/head/addons" | head -1)
-          python scripts/sandbox_plan.py "$RUNNER_TEMP/head/addons/$ID" > "$RUNNER_TEMP/plan.json"
+          # the add-on the guard named, never a guess from the folder (the folder holds every entry)
+          ID=$(jq -r .id "$RUNNER_TEMP/verdict.json")
+          python scripts/sandbox_plan.py "$RUNNER_TEMP/head/addons/$ID.json" > "$RUNNER_TEMP/plan.json"
           echo "plan=$(jq -c . "$RUNNER_TEMP/plan.json")" >> "$GITHUB_OUTPUT"
           echo "runnable=$(jq -r .runnable "$RUNNER_TEMP/plan.json")" >> "$GITHUB_OUTPUT"
   run:
@@ -74,9 +75,10 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with: { name: sandbox-out, path: "${{ runner.temp }}/out", if-no-files-found: ignore, retention-days: 3 }
+      # NOTE: never add a cache (actions/cache) to this job. Code from the add-on can outlive its step and could poison it.
   decide:
     needs: [prepare, run]
-    if: always() && needs.prepare.result == 'success'
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
     permissions: { contents: write, pull-requests: write, actions: write }
     steps:
@@ -93,6 +95,7 @@ jobs:
           BOT_LOGINS: ${{ vars.BOT_LOGINS }}
           PR: ${{ inputs.pr }}
           SHA: ${{ inputs.sha }}
+          REPO: ${{ github.repository }}
           PLAN: ${{ needs.prepare.outputs.plan }}
         run: |
           set -euo pipefail
@@ -100,23 +103,48 @@ jobs:
           printf '%s' "$PLAN" > "$RUNNER_TEMP/plan.json"
           python scripts/sandbox_verdict.py "$RUNNER_TEMP/plan.json" "$RUNNER_TEMP/res" > "$RUNNER_TEMP/v.json"
           STATUS=$(jq -r .status "$RUNNER_TEMP/v.json")
-          ID=$(jq -r .id "$RUNNER_TEMP/plan.json")
-          gh label create sandbox-failed --color B60205 --description "The test run failed" 2>/dev/null || true
           if [ "$STATUS" = "failed" ]; then
-            gh pr comment "$PR" --body "$(printf 'We test-ran your add-on on a clean machine and it did not pass:\n\n%s\n\nFix it, then send a new version from the website.' "$(jq -r '.problems[] | "- " + .' "$RUNNER_TEMP/v.json")")"
-            gh pr edit "$PR" --add-label sandbox-failed
+            gh pr close "$PR" --delete-branch --comment "$(printf 'We test-ran your add-on on a clean machine and it did not pass:\n\n%s\n\nFix it, then send a new version from the website.' "$(jq -r '.problems[] | "- " + .' "$RUNNER_TEMP/v.json")")"
             exit 1
           fi
           # the pull request must still be exactly what was checked, and still a plain Listed submission
-          [ "$(gh pr view "$PR" --json state,headRefOid --jq '.state + .headRefOid')" = "OPEN$SHA" ] || { echo "Changed since it was checked."; exit 1; }
           AUTHOR=$(gh pr view "$PR" --json author --jq .author.login)
-          scripts/ci_judge.sh "$PR" "$AUTHOR"
+          scripts/ci_judge.sh "$PR" "$AUTHOR" "$SHA"
           [ "$(jq -r .action "$RUNNER_TEMP/verdict.json")" = "merge" ] || { echo "No longer a plain Listed submission."; exit 1; }
+          ID=$(jq -r .id "$RUNNER_TEMP/verdict.json")
+          [ "$ID" = "$(jq -r .id "$RUNNER_TEMP/plan.json")" ] || { echo "The test run was for a different add-on."; exit 1; }
+          git show "$SHA:addons/$ID.json" > "$RUNNER_TEMP/entry.json"
+          # a request for a Verified review becomes an issue for us BEFORE anything is merged, so it cannot be lost
+          if [ "$(jq -r '.verify_requested // false' "$RUNNER_TEMP/entry.json")" = "true" ]; then
+            gh label create verify-request --color 0E8A16 --description "The author asked for a Verified review" 2>/dev/null || true
+            TITLE="Verified review requested: $ID ($(jq -r '.commit[0:7]' "$RUNNER_TEMP/entry.json"))"
+            if [ "$(gh issue list --label verify-request --state open --search "\"$TITLE\" in:title" --json number --jq length)" = "0" ]; then
+              gh issue create --label verify-request --title "$TITLE" --body "Author: $(jq -r .submitted_by.github_login "$RUNNER_TEMP/entry.json")
+          Repo: $(jq -r .links.repo "$RUNNER_TEMP/entry.json")
+          Version: $(jq -r .commit "$RUNNER_TEMP/entry.json")
+          Listed meanwhile; it stays Listed until we have read it."
+            fi
+          fi
           # write the result into the entry, on the pull request's own branch
-          git show "FETCH_HEAD:addons/$ID.json" > "$RUNNER_TEMP/entry.json"
           python scripts/sandbox_record.py "$RUNNER_TEMP/entry.json" "$RUNNER_TEMP/v.json" > "$RUNNER_TEMP/new.json"
           BRANCH=$(gh pr view "$PR" --json headRefName --jq .headRefName)
-          BLOB=$(gh api "repos/${{ github.repository }}/contents/addons/$ID.json?ref=$BRANCH" --jq .sha)
-          NEW=$(gh api -X PUT "repos/${{ github.repository }}/contents/addons/$ID.json" -f message="Record the test run for $ID" -f branch="$BRANCH" -f sha="$BLOB" -f content="$(base64 < "$RUNNER_TEMP/new.json" | tr -d '\n')" --jq .commit.sha)
+          BLOB=$(gh api "repos/$REPO/contents/addons/$ID.json?ref=$BRANCH" --jq .sha)
+          NEW=$(gh api -X PUT "repos/$REPO/contents/addons/$ID.json" -f message="Record the test run for $ID" -f branch="$BRANCH" -f sha="$BLOB" -f content="$(base64 < "$RUNNER_TEMP/new.json" | tr -d '\n')" --jq .commit.sha)
+          echo "$NEW" > "$RUNNER_TEMP/new_sha"
+          # our commit must sit directly on the checked one, or something else got in between
+          [ "$(gh api "repos/$REPO/commits/$NEW" --jq '[.parents[].sha] | join(",")')" = "$SHA" ] || { echo "Something was added to the branch after it was checked."; exit 1; }
           gh pr merge "$PR" --squash --delete-branch --match-head-commit "$NEW"
           gh workflow run publish-index.yml
+      - name: Close the pull request if this run could not finish
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          # only while the pull request is still the one we were checking (or our own commit on top of it); a newer one is left alone
+          NEW=$(cat "$RUNNER_TEMP/new_sha" 2>/dev/null || echo none)
+          NOW=$(gh pr view "$PR" --json state,headRefOid --jq '.state + ":" + .headRefOid')
+          if [ "$NOW" = "OPEN:$SHA" ] || [ "$NOW" = "OPEN:$NEW" ]; then
+            gh pr close "$PR" --delete-branch --comment "Something went wrong on our side while testing this, so we closed it. Please send it again from the website in a few minutes." || true
+          fi

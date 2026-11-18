@@ -7,6 +7,9 @@ on:
     paths: ["addons/**", "scripts/build_index.py"]
 permissions:
   contents: write
+concurrency:
+  group: publish-index          # two quick merges must not push over each other
+  cancel-in-progress: false
 jobs:
   publish:
     runs-on: ubuntu-latest

@@ -59,10 +59,12 @@ def not_runnable(entry: dict, reason: str) -> dict:
 
 def make_plan(entry: dict, manifest: dict) -> dict:
     """The plan for one entry and its addon.json. Pure: no network, nothing run."""
+    if not isinstance(manifest, dict):
+        return not_runnable(entry, "its addon.json is not a JSON object")
     if manifest.get("models"):
         return not_runnable(entry, "it downloads models, which a throwaway machine cannot do")
     tools = manifest.get("tools") or []
-    if not tools:
+    if not isinstance(tools, list) or not all(isinstance(t, dict) for t in tools) or not tools:
         return not_runnable(entry, "it lists no tools")
     uses_blender = bool((manifest.get("needs") or {}).get("blender")) or any("{blender}" in (t.get("run") or []) for t in tools)
     if uses_blender:
