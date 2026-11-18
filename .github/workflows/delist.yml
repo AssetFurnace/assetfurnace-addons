@@ -1,0 +1,35 @@
+name: Weekly check for dead entries
+# Once a week: does every entry's repo and pinned version still load? Dead ones are listed in ONE open issue.
+# It only reports. Removing an entry is a person's decision, so nothing is deleted here.
+on:
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python scripts/find_dead.py --report "$RUNNER_TEMP/dead.md"
+      - name: Keep one issue up to date
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh label create dead-entries --color B60205 --description "Entries that can no longer be loaded" 2>/dev/null || true
+          OPEN=$(gh issue list --label dead-entries --state open --json number --jq '.[0].number // empty')
+          if [ -f "$RUNNER_TEMP/dead.md" ]; then
+            if [ -n "$OPEN" ]; then
+              gh issue edit "$OPEN" --body-file "$RUNNER_TEMP/dead.md"
+            else
+              gh issue create --title "Entries that can no longer be loaded" --label dead-entries --body-file "$RUNNER_TEMP/dead.md"
+            fi
+          elif [ -n "$OPEN" ]; then
+            gh issue close "$OPEN" --comment "All entries load again."
+          fi
