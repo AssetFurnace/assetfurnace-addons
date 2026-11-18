@@ -24,7 +24,10 @@ jobs:
       plan: ${{ steps.plan.outputs.plan }}
       runnable: ${{ steps.plan.outputs.runnable }}
     steps:
+      - name: Only from main
+        run: '[ "$GITHUB_REF" = refs/heads/main ] || { echo "Runs only from main."; exit 1; }'
       - uses: actions/checkout@v4
+        with: { ref: main }
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - name: Plan
@@ -52,8 +55,10 @@ jobs:
     timeout-minutes: 20
     permissions: {}
     steps:
+      - name: Only from main
+        run: '[ "$GITHUB_REF" = refs/heads/main ] || { echo "Runs only from main."; exit 1; }'
       - uses: actions/checkout@v4
-        with: { persist-credentials: false }
+        with: { ref: main, persist-credentials: false }
       - uses: actions/checkout@v4
         with: { repository: Bingeljell/image-to-3dlab, path: lab, persist-credentials: false }
       - uses: actions/setup-python@v5
@@ -80,9 +85,14 @@ jobs:
     needs: [prepare, run]
     if: ${{ !cancelled() && needs.prepare.result == 'success' }}
     runs-on: ubuntu-latest
-    permissions: { contents: write, pull-requests: write, actions: write }
+    permissions: { contents: write, pull-requests: write, issues: write, checks: write }
+    # one at a time: each merge changes index.json, and the next one must build on it
+    concurrency: { group: decide-global, cancel-in-progress: false }
     steps:
+      - name: Only from main
+        run: '[ "$GITHUB_REF" = refs/heads/main ] || { echo "Runs only from main."; exit 1; }'
       - uses: actions/checkout@v4
+        with: { ref: main }
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - uses: actions/download-artifact@v4
@@ -113,6 +123,7 @@ jobs:
           [ "$(jq -r .action "$RUNNER_TEMP/verdict.json")" = "merge" ] || { echo "No longer a plain Listed submission."; exit 1; }
           ID=$(jq -r .id "$RUNNER_TEMP/verdict.json")
           [ "$ID" = "$(jq -r .id "$RUNNER_TEMP/plan.json")" ] || { echo "The test run was for a different add-on."; exit 1; }
+          git fetch -q origin "$SHA"
           git show "$SHA:addons/$ID.json" > "$RUNNER_TEMP/entry.json"
           # a request for a Verified review becomes an issue for us BEFORE anything is merged, so it cannot be lost
           if [ "$(jq -r '.verify_requested // false' "$RUNNER_TEMP/entry.json")" = "true" ]; then
@@ -125,16 +136,19 @@ jobs:
           Listed meanwhile; it stays Listed until we have read it."
             fi
           fi
-          # write the result into the entry, on the pull request's own branch
+          # ONE commit on the pull request's branch: the entry with its test result, and the rebuilt index.json.
+          # The scripts run from main (this checkout); the pull request's files are only read and committed to.
           python scripts/sandbox_record.py "$RUNNER_TEMP/entry.json" "$RUNNER_TEMP/v.json" > "$RUNNER_TEMP/new.json"
           BRANCH=$(gh pr view "$PR" --json headRefName --jq .headRefName)
-          BLOB=$(gh api "repos/$REPO/contents/addons/$ID.json?ref=$BRANCH" --jq .sha)
-          NEW=$(gh api -X PUT "repos/$REPO/contents/addons/$ID.json" -f message="Record the test run for $ID" -f branch="$BRANCH" -f sha="$BLOB" -f content="$(base64 < "$RUNNER_TEMP/new.json" | tr -d '\n')" --jq .commit.sha)
+          git worktree add -q --detach "$RUNNER_TEMP/pr" "$SHA"
+          NEW=$(python scripts/sandbox_commit.py --worktree "$RUNNER_TEMP/pr" --trusted-addons addons --entry "$RUNNER_TEMP/new.json")
+          git -C "$RUNNER_TEMP/pr" push origin "HEAD:refs/heads/$BRANCH"   # a plain push: refused if anything was added meanwhile
           echo "$NEW" > "$RUNNER_TEMP/new_sha"
-          # our commit must sit directly on the checked one, or something else got in between
           [ "$(gh api "repos/$REPO/commits/$NEW" --jq '[.parents[].sha] | join(",")')" = "$SHA" ] || { echo "Something was added to the branch after it was checked."; exit 1; }
+          # the one mark the main-branch rule asks for. Only GitHub Actions can post a check like this: a stolen personal token cannot.
+          gh api -X POST "repos/$REPO/check-runs" -f name="addons/decided" -f head_sha="$NEW" -f status=completed -f conclusion=success \
+            -f "output[title]=Test-run and checked" -f "output[summary]=Passed the guard and the test run."
           gh pr merge "$PR" --squash --delete-branch --match-head-commit "$NEW"
-          gh workflow run publish-index.yml
       - name: Close the pull request if this run could not finish
         if: failure()
         env:
