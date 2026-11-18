@@ -1,0 +1,26 @@
+{
+  "id": "vehicle-kit",
+  "name": "Vehicle kit",
+  "repo": "https://github.com/Ahnyth/assetfurnace-vehicle-kit.git",
+  "commit": "27ee4a3564115e5b2a5a291ebd0696466ac3a1e3",
+  "author": {
+    "name": "Ahnyth",
+    "url": "https://github.com/Ahnyth"
+  },
+  "summary": "A detailed bus, metro car or van from a few numbers: body, wheels and doors as parts on their pivots, one atlas, no picture needed.",
+  "type": "tool",
+  "tier": "listed",
+  "runs": "local",
+  "picture": "pictures/vehicle-kit.jpg",
+  "links": {
+    "repo": "https://github.com/Ahnyth/assetfurnace-vehicle-kit"
+  },
+  "submitted_by": {
+    "github_login": "Ahnyth",
+    "github_id": "224684153"
+  },
+  "run_check": {
+    "status": "passed",
+    "date": "2026-11-18"
+  }
+}
