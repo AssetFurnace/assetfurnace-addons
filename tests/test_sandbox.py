@@ -281,6 +281,17 @@ def test_the_workflow_installs_the_blender_version_the_plan_assumes():
     assert f"Blender{sp.BLENDER}/" in text and f"blender-{sp.BLENDER}." in text
 
 
+def test_the_discord_heads_up_cannot_block_a_merge_or_ping_anyone_and_the_secret_only_reaches_the_trusted_job():
+    text = (Path(__file__).resolve().parents[1] / ".github" / "workflows" / "sandbox.yml").read_text()
+    assert text.count("DISCORD_VERIFY_WEBHOOK: ${{ secrets.DISCORD_VERIFY_WEBHOOK }}") == 1      # one place: the decide job
+    decide = text[text.index("  decide:"):text.index("  retry:")]
+    assert "secrets.DISCORD_VERIFY_WEBHOOK" in decide and "secrets.DISCORD_VERIFY_WEBHOOK" not in text[:text.index("  decide:")]
+    assert "allowed_mentions: {parse: []}" in text                                                      # no @everyone from an author's text
+    assert 'if [ -n "${DISCORD_VERIFY_WEBHOOK:-}" ]' in decide                                          # no secret, no post
+    assert '"$DISCORD_VERIFY_WEBHOOK" >/dev/null || echo' in decide                                     # a Discord failure does not fail the job
+    assert "jq -n --arg" in decide                                                                      # the message is built safely, never pasted into a shell string
+
+
 def test_odd_json_gives_a_message_not_a_crash():
     assert not sp.make_plan(ENTRY, ["not", "an", "object"])["runnable"]
     assert not sp.make_plan(ENTRY, {"tools": "nope"})["runnable"]

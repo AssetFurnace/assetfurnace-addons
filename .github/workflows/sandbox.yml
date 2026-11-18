@@ -107,6 +107,7 @@ jobs:
           SHA: ${{ inputs.sha }}
           REPO: ${{ github.repository }}
           PLAN: ${{ needs.prepare.outputs.plan }}
+          DISCORD_VERIFY_WEBHOOK: ${{ secrets.DISCORD_VERIFY_WEBHOOK }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/res"
@@ -130,10 +131,17 @@ jobs:
             gh label create verify-request --color 0E8A16 --description "The author asked for a Verified review" 2>/dev/null || true
             TITLE="Verified review requested: $ID ($(jq -r '.commit[0:7]' "$RUNNER_TEMP/entry.json"))"
             if [ "$(gh issue list --label verify-request --state open --search "\"$TITLE\" in:title" --json number --jq length)" = "0" ]; then
-              gh issue create --label verify-request --title "$TITLE" --body "Author: $(jq -r .submitted_by.github_login "$RUNNER_TEMP/entry.json")
+              ISSUE=$(gh issue create --label verify-request --title "$TITLE" --body "Author: $(jq -r .submitted_by.github_login "$RUNNER_TEMP/entry.json")
           Repo: $(jq -r .links.repo "$RUNNER_TEMP/entry.json")
           Version: $(jq -r .commit "$RUNNER_TEMP/entry.json")
-          Listed meanwhile; it stays Listed until we have read it."
+          Listed meanwhile; it stays Listed until we have read it.")
+              # a heads-up in the verified-requests channel. Best effort: the issue above is the record, so a missing
+              # secret or a Discord outage never stops the merge. The webhook can only post to that one channel.
+              if [ -n "${DISCORD_VERIFY_WEBHOOK:-}" ]; then
+                jq -n --arg id "$ID" --arg by "$(jq -r .submitted_by.github_login "$RUNNER_TEMP/entry.json")" --arg url "$ISSUE" \
+                  '{content: ("Verified review requested: " + $id + " by " + $by + "\n" + $url), allowed_mentions: {parse: []}}' \
+                  | curl -fsS --max-time 15 -H "content-type: application/json" -d @- "$DISCORD_VERIFY_WEBHOOK" >/dev/null || echo "Discord did not take the heads-up; the issue is the record."
+              fi
             fi
           fi
           # ONE commit on the pull request's branch: main merged in, plus the entry with its test result and the rebuilt index.json.
