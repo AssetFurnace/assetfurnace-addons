@@ -54,8 +54,11 @@ def check_entry(path: Path, data: object) -> list[str]:
     if "verify_requested" in data and not isinstance(data["verify_requested"], bool):
         problems.append("verify_requested must be true or false")
     check = data.get("run_check")
-    if check is not None and not (isinstance(check, dict) and check.get("status") in ("passed", "not_run")):
-        problems.append("run_check must say passed or not_run (the checks write it, do not add it by hand)")
+    if check is not None and not (isinstance(check, dict) and check.get("status") in ("passed", "partial", "not_run")):
+        problems.append("run_check must say passed, partial or not_run (the checks write it, do not add it by hand)")
+    elif isinstance(check, dict) and "skipped" in check and not (check["status"] == "partial" and isinstance(check["skipped"], list)
+                                                                  and all(isinstance(t, str) and len(t) <= 60 for t in check["skipped"]) and len(check["skipped"]) <= 20):
+        problems.append("run_check skipped must be a short list of tool names, and only a partial result has one")
     if data.get("picture"):
         problems.extend(check_picture(path, addon_id, str(data["picture"])))
     return problems

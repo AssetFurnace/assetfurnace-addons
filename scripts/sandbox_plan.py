@@ -6,7 +6,8 @@ Prints the plan as JSON: {"runnable": bool, "reason": ..., "id", "repo", "commit
 
 An add-on we cannot run there (downloads models, needs a picture or model file as input, needs a newer Blender than
 the test machine has, makes something other than a .glb) is not an error: it is marked not runnable with the reason,
-and is listed as "not run-checked".
+and is listed as "not run-checked". A tool that needs a file as input is left out of the run and named in "skipped";
+the rest are still tested, and the result is "partial". Only when no tool can be run is the add-on "not run-checked".
 """
 
 from __future__ import annotations
@@ -72,20 +73,32 @@ def make_plan(entry: dict, manifest: dict) -> dict:
         if match and (int(match[1]), int(match[2])) > tuple(int(x) for x in BLENDER.split(".")):
             return not_runnable(entry, f"it needs a newer Blender than the test machine's {BLENDER}")
     runs = []
-    for tool in tools[:MAX_TOOLS]:
-        if tool.get("makes") != "glb":
-            return not_runnable(entry, f"the tool {tool.get('id')} makes a .{tool.get('makes')}, and only .glb can be checked so far")
+    skipped = []          # tools that were not run (they need a file as input, or are past the limit): named in the result
+    file_reason = ""
+    names = [str(t.get("id") or "(unnamed)") for t in tools]
+    skipped.extend(names[MAX_TOOLS:])      # past the limit: not run, and said so
+    for tool, name in zip(tools[:MAX_TOOLS], names):
         inputs = {}
+        needs_file = False
         for spec in tool.get("inputs") or []:
             value = sample_value(spec)
             if value is None:
                 if spec.get("optional"):
                     continue
-                return not_runnable(entry, f"the tool {tool.get('id')} needs a file as input, which we cannot give it")
+                needs_file = True
+                break
             inputs[str(spec.get("id"))] = value
-        runs.append({"tool": str(tool.get("id")), "inputs": inputs})
+        if needs_file:
+            skipped.append(name)
+            file_reason = file_reason or f"the tool {name} needs a file as input, which we cannot give it"
+            continue
+        if tool.get("makes") != "glb":
+            return not_runnable(entry, f"the tool {name} makes a .{tool.get('makes')}, and only .glb can be checked so far")
+        runs.append({"tool": name, "inputs": inputs})
+    if not runs:
+        return not_runnable(entry, file_reason or "it lists no tools")
     return {"runnable": True, "reason": "", "id": entry.get("id"), "repo": entry.get("repo"), "commit": entry.get("commit"),
-            "blender": BLENDER if uses_blender else None, "runs": runs}
+            "blender": BLENDER if uses_blender else None, "runs": runs, "skipped": skipped}
 
 
 def fetch_manifest(entry: dict) -> dict:

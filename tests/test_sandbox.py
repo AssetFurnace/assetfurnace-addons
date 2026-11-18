@@ -41,6 +41,63 @@ def test_models_files_newer_blender_and_other_outputs_are_not_runnable():
     assert not sp.make_plan(ENTRY, {**MANIFEST, "tools": []})["runnable"]
 
 
+def test_a_tool_that_needs_a_file_is_skipped_and_named_not_a_reason_to_skip_them_all():
+    picture = {**TOOL, "id": "label", "inputs": [{"id": "p", "type": "picture"}]}
+    model = {**TOOL, "id": "fit", "inputs": [{"id": "m", "type": "model"}]}
+    plan = sp.make_plan(ENTRY, {**MANIFEST, "tools": [TOOL, picture, model]})
+    assert plan["runnable"]
+    assert [r["tool"] for r in plan["runs"]] == [TOOL["id"]]
+    assert plan["skipped"] == ["label", "fit"]
+    assert sp.make_plan(ENTRY, MANIFEST)["skipped"] == []
+    only_files = sp.make_plan(ENTRY, {**MANIFEST, "tools": [picture, model]})
+    assert not only_files["runnable"] and "file as input" in only_files["reason"]
+
+
+def test_skipped_tools_make_a_partial_result_not_a_pass(tmp_path):
+    v = sv.judge({**PLAN, "skipped": ["label", "fit"]}, result(tmp_path))
+    assert v["status"] == "partial" and v["skipped"] == ["label", "fit"]
+    assert sv.judge(PLAN, result(tmp_path))["status"] == "passed"
+    assert sr.record(ENTRY, v, "2026-11-18")["run_check"] == {"status": "partial", "date": "2026-11-18", "skipped": ["label", "fit"]}
+    assert "skipped" not in sr.record(ENTRY, {"status": "passed"}, "2026-11-18")["run_check"]
+    assert "skipped" not in sr.record(ENTRY, {"status": "not_run", "reason": "x", "skipped": ["a"]}, "2026-11-18")["run_check"]
+
+
+def test_a_failure_never_hides_behind_skipped_tools(tmp_path):
+    v = sv.judge({**PLAN, "skipped": ["label"]}, result(tmp_path, exit_=1))
+    assert v["status"] == "failed" and "skipped" not in v
+
+
+def test_tools_past_the_limit_and_unnamed_tools_are_named_as_skipped():
+    many = [{**TOOL, "id": f"t{i}"} for i in range(7)]
+    plan = sp.make_plan(ENTRY, {**MANIFEST, "tools": many})
+    assert len(plan["runs"]) == sp.MAX_TOOLS and plan["skipped"] == ["t5", "t6"]
+    nameless = {k: v for k, v in TOOL.items() if k != "id"}
+    assert sp.make_plan(ENTRY, {**MANIFEST, "tools": [TOOL, {**nameless, "inputs": [{"id": "p", "type": "picture"}]}]})["skipped"] == ["(unnamed)"]
+
+
+def test_a_file_tool_is_skipped_even_when_it_makes_something_else():
+    odd = {**TOOL, "id": "label", "makes": "png", "inputs": [{"id": "p", "type": "picture"}]}
+    plan = sp.make_plan(ENTRY, {**MANIFEST, "tools": [TOOL, odd]})
+    assert plan["runnable"] and plan["skipped"] == ["label"]
+    assert ".fbx" in sp.make_plan(ENTRY, {**MANIFEST, "tools": [{**TOOL, "makes": "fbx"}]})["reason"]
+
+
+def test_an_optional_file_input_does_not_get_a_tool_skipped():
+    opt = {**TOOL, "inputs": TOOL["inputs"] + [{"id": "p", "type": "picture", "optional": True}]}
+    plan = sp.make_plan(ENTRY, {**MANIFEST, "tools": [opt]})
+    assert plan["skipped"] == [] and [r["tool"] for r in plan["runs"]] == [TOOL["id"]]
+
+
+def test_the_entry_checker_accepts_partial_with_a_short_list_and_nothing_odd():
+    good = {"id": "cool", "name": "Cool", "repo": "https://github.com/a/cool.git", "commit": "a" * 40, "author": {"name": "A"},
+            "summary": "A thing.", "tier": "listed", "runs": "local", "type": "tool"}
+    p = Path("addons/cool.json")
+    assert ce.check_entry(p, {**good, "run_check": {"status": "partial", "skipped": ["fit"]}}) == []
+    for bad in ({"status": "passed", "skipped": ["fit"]}, {"status": "partial", "skipped": "fit"},
+                {"status": "partial", "skipped": ["x" * 61]}, {"status": "partial", "skipped": ["a"] * 21}):
+        assert any("skipped" in m for m in ce.check_entry(p, {**good, "run_check": bad})), bad
+
+
 def test_no_blender_needed_means_none_is_installed():
     plain = {**TOOL, "run": ["python3", "make.py"]}
     assert sp.make_plan(ENTRY, {"models": [], "tools": [plain]})["blender"] is None

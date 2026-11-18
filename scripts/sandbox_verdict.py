@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Judge what the sandbox produced. TRUSTED: runs in a separate job, reads only data, never runs anything from the add-on.
 
-Usage: sandbox_verdict.py PLAN.json RESULT_DIR      prints {"status": "passed"|"failed"|"not_run", "reason", "problems": [...]}
+Usage: sandbox_verdict.py PLAN.json RESULT_DIR      prints {"status": "passed"|"partial"|"failed"|"not_run", "reason", "problems": [...]}
 
 Never believes the sandbox's own claims beyond "what files came out": every .glb is parsed here, byte by byte.
-Statuses: passed = it installed, every tool ran and made a real model; failed = it did not (the author is told why);
+Statuses: passed = it installed, every tool ran and made a real model; partial = the same for the tools we could run, and the
+ones we could not (they need a file as input) are named in "skipped"; failed = it did not (the author is told why);
 not_run = we could not test it on a throwaway machine (the plan said so), so it is listed as "not run-checked".
 """
 
@@ -17,6 +18,7 @@ from pathlib import Path
 
 GLB_MAX_BYTES = 50_000_000
 RUN_FILE_MAX = 1_000_000
+MAX_SKIPPED = 20
 MAGIC = b"glTF"
 
 
@@ -98,7 +100,11 @@ def judge(plan: dict, result_dir: Path) -> dict:
                 problems.append(f"the tool {r['tool']}: the model is over {GLB_MAX_BYTES // 1_000_000} MB")
                 continue
             problems.extend(f"the tool {r['tool']}: {p}" for p in check_glb(path.read_bytes()))
-    return {"status": "failed" if problems else "passed", "reason": "", "problems": problems}
+    if problems:
+        return {"status": "failed", "reason": "", "problems": problems}
+    if plan.get("skipped"):
+        return {"status": "partial", "reason": "", "problems": [], "skipped": [str(t)[:60] for t in plan["skipped"]][:MAX_SKIPPED]}
+    return {"status": "passed", "reason": "", "problems": []}
 
 
 def main(argv: list[str] | None = None) -> int:

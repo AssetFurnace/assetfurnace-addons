@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Write the test result into an entry. Usage: sandbox_record.py ENTRY.json VERDICT.json [--date YYYY-MM-DD] > new entry.
 
-Only `passed` and `not_run` are ever recorded (a failure is never merged). The record says plainly whether we ran it:
-{"run_check": {"status": "passed" | "not_run", "reason": "...", "date": "..."}}. The one-off verify_requested flag is dropped (the workflow has opened a review request from it by then). Whatever run_check the entry arrived
+Only `passed`, `partial` and `not_run` are ever recorded (a failure is never merged). The record says plainly whether we ran it:
+{"run_check": {"status": "passed" | "partial" | "not_run", "reason": "...", "skipped": [...], "date": "..."}}. The one-off verify_requested flag is dropped (the workflow has opened a review request from it by then). Whatever run_check the entry arrived
 with is replaced: only this step, after the real test, may write it.
 """
 
@@ -17,11 +17,13 @@ from pathlib import Path
 
 def record(entry: dict, verdict: dict, date: str) -> dict:
     status = verdict.get("status")
-    if status not in ("passed", "not_run"):
+    if status not in ("passed", "partial", "not_run"):
         raise ValueError(f"cannot record a {status!r} result")
     check = {"status": status, "date": date}
     if status == "not_run":
         check["reason"] = str(verdict.get("reason", ""))[:200]
+    if status == "partial":
+        check["skipped"] = [str(t)[:60] for t in verdict.get("skipped", [])][:20]
     kept = {k: v for k, v in entry.items() if k not in ("run_check", "verify_requested")}
     return {**kept, "run_check": check}
 

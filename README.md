@@ -8,7 +8,7 @@ Add-ons run code on your machine. Read the labels.
 | Label | What it means |
 |-------|---------------|
 | **Verified** | We read the code, ran it and checked its licences. Pinned to that exact version. A new version is checked again. |
-| **Listed** | The author sent it in and it passed automatic checks: its entry and its `addon.json` at that exact version passed our automatic checks, and we test-ran it on a clean machine and it made a real model. We did **not** read the code. If we could not test-run it (it downloads models, or needs a file as input), it says **not run-checked**. Use at your own risk. |
+| **Listed** | The author sent it in and it passed automatic checks: its entry and its `addon.json` at that exact version passed our automatic checks, and we test-ran it on a clean machine and it made a real model. We did **not** read the code. If we could not test-run it (it downloads models, or every tool needs a file as input), it says **not run-checked**. If only some tools could be run, it says **partly run-checked** and names the ones that were not. Use at your own risk. |
 | **Unknown** | Not on this list. We have never looked at it. |
 
 ## Submit your add-on
@@ -56,6 +56,8 @@ python scripts/check_entry.py addons/your-id.json
 A fresh machine is started for each submission and deleted afterwards. It has no passwords or access to anything of
 ours. Your add-on is installed with the studio's own `addon add` command and each tool is run once with plain test
 values (the middle of a number's range, the first choice, `test` for text). The model it makes is then checked on a
-separate machine: it must be a real `.glb` with something in it. Add-ons that download models, need a picture or model
-file as input, need a newer Blender than the test machine's, or make something other than `.glb` cannot be run this
-way, so they are listed as **not run-checked**.
+separate machine: it must be a real `.glb` with something in it. A tool that needs a picture or model file as input
+cannot be given one, so it is left out of the run and named in the result (a **partial** test run); the add-on's other
+tools are still tested.
+Add-ons that download models, need a newer Blender than the test machine's, make something other than `.glb`, or have
+no tool that can be run without a file cannot be run this way, so they are listed as **not run-checked**.
