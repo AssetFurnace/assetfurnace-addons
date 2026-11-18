@@ -5,7 +5,7 @@ Usage: sandbox_verdict.py PLAN.json RESULT_DIR      prints {"status": "passed"|"
 
 Never believes the sandbox's own claims beyond "what files came out": every .glb is parsed here, byte by byte.
 Statuses: passed = it installed, every tool ran and made a real model; partial = the same for the tools we could run, and the
-ones we could not (they need a file as input) are named in "skipped"; failed = it did not (the author is told why);
+ones we could not run (they need a file as input, or are past the tool limit) are named in "skipped"; failed = it did not (the author is told why);
 not_run = we could not test it on a throwaway machine (the plan said so), so it is listed as "not run-checked".
 """
 

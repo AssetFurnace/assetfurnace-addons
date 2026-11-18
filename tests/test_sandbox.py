@@ -62,6 +62,21 @@ def test_skipped_tools_make_a_partial_result_not_a_pass(tmp_path):
     assert "skipped" not in sr.record(ENTRY, {"status": "not_run", "reason": "x", "skipped": ["a"]}, "2026-11-18")["run_check"]
 
 
+def test_a_run_that_reports_a_skipped_tool_is_not_a_partial_pass(tmp_path):
+    (tmp_path / "run.json").write_text(json.dumps({"install_exit": 0, "runs": [
+        {"tool": "build", "exit": 0, "files": ["run0-0.glb"]}, {"tool": "label", "exit": 0, "files": ["run1-0.glb"]}]}))
+    (tmp_path / "run0-0.glb").write_bytes(glb())
+    (tmp_path / "run1-0.glb").write_bytes(glb())
+    v = sv.judge({**PLAN, "skipped": ["label"]}, tmp_path)
+    assert v["status"] == "failed" and "not every tool" in v["problems"][0]
+
+
+def test_an_input_we_cannot_fill_is_not_called_a_file():
+    odd = {**TOOL, "id": "tint", "inputs": [{"id": "c", "type": "colour"}]}
+    plan = sp.make_plan(ENTRY, {**MANIFEST, "tools": [TOOL, odd]})
+    assert not plan["runnable"] and "cannot give a test value" in plan["reason"] and "file" not in plan["reason"]
+
+
 def test_a_failure_never_hides_behind_skipped_tools(tmp_path):
     v = sv.judge({**PLAN, "skipped": ["label"]}, result(tmp_path, exit_=1))
     assert v["status"] == "failed" and "skipped" not in v

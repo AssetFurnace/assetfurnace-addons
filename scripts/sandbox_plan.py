@@ -85,6 +85,8 @@ def make_plan(entry: dict, manifest: dict) -> dict:
             if value is None:
                 if spec.get("optional"):
                     continue
+                if spec.get("type") not in ("picture", "model"):
+                    return not_runnable(entry, f"the tool {name} has an input ({spec.get('id')}) we cannot give a test value")
                 needs_file = True
                 break
             inputs[str(spec.get("id"))] = value
