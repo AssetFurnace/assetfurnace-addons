@@ -73,3 +73,9 @@ def test_picture_must_exist_be_small_real_and_named_after_the_add_on(tmp_path):
 def test_picture_over_the_size_limit_is_refused(tmp_path):
     entry = _repo_with_picture(tmp_path, "pedestal.png", b"\x89PNG\r\n\x1a\n" + b"0" * 700_000)
     assert any("KB" in p for p in ce.check_entry(entry, {**GOOD, "picture": "pictures/pedestal.png"}))
+
+
+def test_submitted_by_needs_login_and_id():
+    ok = {**GOOD, "submitted_by": {"github_login": "ann", "github_id": "9"}}
+    assert ce.check_entry(Path("addons/pedestal.json"), ok) == []
+    assert any("submitted_by" in p for p in ce.check_entry(Path("addons/pedestal.json"), {**GOOD, "submitted_by": {"github_login": "ann"}}))

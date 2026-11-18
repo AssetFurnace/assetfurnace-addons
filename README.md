@@ -8,36 +8,35 @@ Add-ons run code on your machine. Read the labels.
 | Label | What it means |
 |-------|---------------|
 | **Verified** | We read the code, ran it and checked its licences. Pinned to that exact version. A new version is checked again. |
-| **Listed** | The author sent it in and it passed automatic checks: it installs, runs and makes a valid model. We did **not** read it. Use at your own risk. |
+| **Listed** | The author sent it in and it passed automatic checks: its entry and its `addon.json` at that exact version passed our automatic checks. We did **not** read the code. Use at your own risk. |
 | **Unknown** | Not on this list. We have never looked at it. |
 
 ## Submit your add-on
 
-1. **Build and test it.** Follow the [author guide](https://github.com/Bingeljell/image-to-3dlab/blob/main/docs/add-ons.md).
-   Install it from your own repo with `./lab addon add --unreviewed <repo>@<commit>` and run it in the studio.
-2. **Fork this repo** and add one file, `addons/<your-id>.json`. Copy `addons/pedestal.json` and change it:
-   - `id`, `name`, `summary`: the same as in your `addon.json`.
-   - `repo`: your public GitHub link. `commit`: the full 40-character version code.
-   - `author`: your name and a link to your page.
-   - `runs`: `local` (default) or `cloud`. Say `cloud` if it sends the user's models or pictures off their machine. It must match your `addon.json`.
-   - `picture`: one PNG or JPG of what your add-on makes, under 600 KB, at `pictures/<your-id>.png` (or `.jpg`). Add the file to the same pull request.
-   - `links`: at least `repo`. Optional: a page for your add-on.
-3. **Open a pull request.** Checks run on their own and tell you in plain words what to fix.
-4. **If the checks pass, it is merged and you are Listed.**
-5. **Want Verified?** Say so in the pull request. We read the code and run it on test inputs.
+Submit at **[assetfurnace.com/add-ons/submit](https://assetfurnace.com/add-ons/submit)**. Sign in with GitHub, send your
+repo link, the full 40-character version code and a picture (PNG or JPG, under 600 KB). Our bot opens the pull request
+here for you, taking your name and profile link from your GitHub account. Pull requests opened by anyone else are
+closed automatically.
 
-A new version of your add-on is a new pull request that changes `commit`. Nothing updates by itself.
+1. **Build and test it.** Follow the [author guide](https://github.com/Bingeljell/image-to-3dlab/blob/main/docs/add-ons.md).
+   Install it from your own repo with `./lab addon add --unlisted <repo>@<commit>` and run it in the studio.
+2. **Send it** on the page above. The name, summary, licence and `runs` come from your `addon.json` at that version.
+3. **Checks run on their own.** If they pass, it is merged and you are Listed. If not, the pull request says what to fix.
+4. **Want Verified?** Tick the box on the page. We read the code and run it on test inputs; until then it stays Listed.
+
+A new version of your add-on is a new submission. Nothing updates by itself. A new version of a Verified add-on is not
+merged until we have read it, and users keep the version we checked.
 
 ## Rules
 
-- Only the owner of an add-on, or a major contributor, may submit it.
+- Only the owner of the repo, or a public member of its organisation, may submit it. The first person to use an id keeps it.
 - Pin a full commit. No branches, no tags.
 - No code that updates itself or downloads more code after install.
 - Say what it does: network use (including sending models off the user's machine), shell commands, files it writes, models it downloads and their licences.
 - Every model it uses needs its licence named in `addon.json`.
 - No compiled binaries we cannot read.
 - Don't impersonate AssetFurnace or another author.
-- Only we set `"tier": "verified"`. If a pull request sets it, we change it to `listed`.
+- Only we set `"tier": "verified"`. A submission that sets it waits for a person.
 - If your repo or pinned commit disappears, or a problem is reported and goes unanswered, we can remove the entry.
 
 Paid add-ons are a deal between you and the user. We only check that they work.

@@ -48,6 +48,9 @@ def check_entry(path: Path, data: object) -> list[str]:
         problems.append("type must be tool or app")
     if data.get("runs", "local") not in RUNS:
         problems.append("runs must be local or cloud")
+    by = data.get("submitted_by")
+    if by is not None and not (isinstance(by, dict) and by.get("github_login") and by.get("github_id")):
+        problems.append("submitted_by needs github_login and github_id (the website writes it, do not add it by hand)")
     if data.get("picture"):
         problems.extend(check_picture(path, addon_id, str(data["picture"])))
     return problems
