@@ -2,7 +2,7 @@
   "id": "crate-kit",
   "name": "Crate kit",
   "repo": "https://github.com/AssetFurnace/crate-addon.git",
-  "commit": "46d3d25eff904d86ec5685b9c748fd5751930fb2",
+  "commit": "4e9c7c14e38bfd0b4645f213d8e8c8702d9bdea3",
   "author": {
     "name": "Nikhil Shahane",
     "url": "https://github.com/Bingeljell"
@@ -20,8 +20,11 @@
     "github_id": "2819267"
   },
   "run_check": {
-    "status": "not_run",
+    "status": "partial",
     "date": "2026-11-18",
-    "reason": "the tool fit needs a file as input, which we cannot give it"
+    "skipped": [
+      "fit",
+      "label"
+    ]
   }
 }
