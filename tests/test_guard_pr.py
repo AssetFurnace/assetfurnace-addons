@@ -108,3 +108,15 @@ def test_a_symlinked_entry_is_not_read(tmp_path):
 def test_the_manifest_check_runs_online(tmp_path):
     v = run(tmp_path, offline=False, fetch=lambda url: json.dumps({"schema": 1, "id": "other", "licence": "MIT", "tools": [{}]}))
     assert v["action"] == "fail" and "addon.json says id" in v["message"]
+
+
+def test_a_symlinked_picture_is_refused(tmp_path):
+    head = tree(tmp_path / "head")
+    (head / "pictures" / "cool.png").unlink()
+    secret = tmp_path / "secret.png"
+    secret.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 20)
+    (head / "pictures" / "cool.png").symlink_to(secret)
+    main = tmp_path / "main"
+    main.mkdir()
+    v = gp.judge("the-bot", ["the-bot"], FILES, [], head, main, offline=True)
+    assert v["action"] == "fail" and "Links" in v["message"]

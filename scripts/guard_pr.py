@@ -54,6 +54,8 @@ def judge(author: str, bots: list[str], files: list[str], labels: list[str], hea
     if pictures and PICTURE.match(pictures[0]).group(1) != addon_id:
         return verdict("hold", "The picture is not named after the add-on, so a person has to look at it.")
 
+    if any(path.is_symlink() for path in head.rglob("*")):
+        return verdict("fail", "Links between files are not allowed in a submission.")
     entry = read_json(head / entries[0])
     if not isinstance(entry, dict):
         return verdict("fail", "The entry file is missing or is not valid JSON.")
