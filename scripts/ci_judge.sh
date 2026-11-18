@@ -9,12 +9,15 @@ PR="$1"; AUTHOR="$2"; EXPECT="${3:-}"; TMP="${RUNNER_TEMP:-/tmp}"
 # every file the pull request touches, AND the old name of a renamed file, so a rename cannot hide a deletion
 FILES=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' | tr '\n' ' ')
 CROSS=$(gh pr view "$PR" --json isCrossRepository --jq .isCrossRepository)
+BASE=$(gh pr view "$PR" --json baseRefName --jq .baseRefName)
 rm -rf "$TMP/head"; mkdir -p "$TMP/head"
 git fetch --quiet origin "refs/pull/$PR/head"
 GOT=$(git rev-parse FETCH_HEAD)
 git archive "$GOT" addons pictures 2>/dev/null | tar -x -C "$TMP/head" || true
 if [ -n "$EXPECT" ] && [ "$GOT" != "$EXPECT" ]; then
   echo '{"action": "hold", "message": "The pull request changed after it was checked."}' > "$TMP/verdict.json"
+elif [ "$BASE" != "main" ]; then
+  echo '{"action": "hold", "message": "This pull request is not aimed at main, so a person has to look at it."}' > "$TMP/verdict.json"
 elif [ "$CROSS" = "true" ] && [ "$(printf %s "${BOT_LOGINS:-}" | tr ',' '\n' | grep -cix "$AUTHOR" || true)" != "0" ]; then
   echo '{"action": "hold", "message": "This pull request comes from a fork, so a person has to look at it."}' > "$TMP/verdict.json"
 else

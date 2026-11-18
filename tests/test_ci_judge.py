@@ -54,6 +54,7 @@ def world(tmp_path, changed=("cool",), existing=("aaa",), files_json=None):
     (bindir / "gh").write_text(f"""#!/usr/bin/env bash
 case "$*" in
   api*) echo '{json.dumps(files)}' | jq -r '.[] | .filename, (.previous_filename // empty)';;
+  *baseRefName*) echo "${{PR_BASE:-main}}";;
   *isCrossRepository*) echo false;;
   *) echo "unexpected gh call: $*" >&2; exit 9;;
 esac
@@ -92,3 +93,9 @@ def test_the_expected_commit_passes_when_it_is_the_one(tmp_path):
 def test_a_rename_that_deletes_someone_elses_entry_waits(tmp_path):
     files = [{"filename": "addons/cool.json", "previous_filename": "addons/aaa.json"}, {"filename": "pictures/cool.png"}]
     assert judge(tmp_path, files_json=files)["action"] == "hold"
+
+
+def test_a_pull_request_aimed_at_another_branch_waits_for_a_person(tmp_path, monkeypatch):
+    monkeypatch.setenv("PR_BASE", "some-other-branch")
+    verdict = judge(tmp_path)
+    assert verdict["action"] == "hold" and "not aimed at main" in verdict["message"]

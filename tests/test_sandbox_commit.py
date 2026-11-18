@@ -1,4 +1,5 @@
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -21,40 +22,76 @@ def git(cwd, *args):
                           check=True, capture_output=True, text=True).stdout.strip()
 
 
-def make_pr_checkout(tmp_path):
-    """A real git checkout standing in for the pull request's checked commit (it lacks entries main has gained since)."""
+PNG = b"\x89PNG\r\n\x1a\n" + b"0" * 20
+
+
+def make_world(tmp_path):
+    """A repo whose `main` has moved on (entry `newer`, a new index) since the pull request branched off it."""
     repo = tmp_path / "pr"
     (repo / "addons").mkdir(parents=True)
-    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (repo / "pictures").mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main", str(repo)], check=True)
     (repo / "addons" / "old.json").write_text(json.dumps(entry("old")), encoding="utf-8")
+    (repo / "index.json").write_text(json.dumps([entry("old")]), encoding="utf-8")
     git(repo, "add", ".")
     git(repo, "commit", "-q", "-m", "base")
-    return repo
-
-
-def test_one_commit_with_entry_and_index_sits_directly_on_the_checked_one(tmp_path):
-    repo = make_pr_checkout(tmp_path)
+    git(repo, "checkout", "-q", "-b", "pr")
+    (repo / "addons" / "mine.json").write_text(json.dumps(entry("mine", picture="pictures/mine.png")), encoding="utf-8")
+    (repo / "pictures" / "mine.png").write_bytes(PNG)
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "the pull request")
     checked = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-q", "main")
+    (repo / "pictures").mkdir(exist_ok=True)
+    (repo / "addons" / "newer.json").write_text(json.dumps(entry("newer", picture="pictures/newer.png")), encoding="utf-8")
+    (repo / "pictures" / "newer.png").write_bytes(PNG)
+    (repo / "index.json").write_text(json.dumps([entry("newer"), entry("old")]), encoding="utf-8")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "main moved on")
+    main_head = git(repo, "rev-parse", "HEAD")
     main_addons = tmp_path / "main_addons"
-    main_addons.mkdir()
-    (main_addons / "old.json").write_text(json.dumps(entry("old")), encoding="utf-8")
-    (main_addons / "newer.json").write_text(json.dumps(entry("newer")), encoding="utf-8")  # merged to main after the PR was opened
-    new = sc.make_commit(repo, main_addons, entry("mine"), "Record")
-    assert git(repo, "rev-list", "--parents", "-n1", new).split() == [new, checked]
-    assert sorted(git(repo, "show", "--name-only", "--format=", new).split()) == ["addons/mine.json", "index.json"]
+    shutil.copytree(repo / "addons", main_addons)
+    git(repo, "checkout", "-q", "--detach", checked)
+    return repo, checked, main_head, main_addons
+
+
+def test_merge_commit_with_entry_picture_and_index_even_though_main_moved(tmp_path):
+    repo, checked, main_head, main_addons = make_world(tmp_path)
+    mine = {**json.loads((repo / "addons" / "mine.json").read_text())}
+    new = sc.make_commit(repo, main_addons, mine, "Record", main_ref="main")
+    assert git(repo, "rev-list", "--parents", "-n1", new).split() == [new, checked, main_head]
     ids = [e["id"] for e in json.loads((repo / "index.json").read_text())]
-    assert ids == ["mine", "newer", "old"]  # main's entries plus this one, not the pull request's stale view
+    assert ids == ["mine", "newer", "old"]
+    # squashing it into main is clean: its base IS main, so only our entry and picture differ
+    tree_diff = git(repo, "diff", "--name-only", main_head, new).split()
+    assert sorted(tree_diff) == ["addons/mine.json", "index.json", "pictures/mine.png"]
+
+
+def test_a_clash_in_another_file_makes_no_commit(tmp_path):
+    repo, checked, main_head, main_addons = make_world(tmp_path)
+    git(repo, "checkout", "-q", "pr")
+    (repo / "addons" / "old.json").write_text(json.dumps(entry("old", summary="Changed by the PR.")), encoding="utf-8")
+    git(repo, "commit", "-qam", "touches an entry that is not its own")
+    checked = git(repo, "rev-parse", "HEAD")
+    git(repo, "checkout", "-q", "main")
+    (repo / "addons" / "old.json").write_text(json.dumps(entry("old", summary="Changed on main.")), encoding="utf-8")
+    git(repo, "commit", "-qam", "main changed it too")
+    shutil.rmtree(main_addons)
+    shutil.copytree(repo / "addons", main_addons)
+    git(repo, "checkout", "-q", "--detach", checked)
+    mine = json.loads((repo / "addons" / "mine.json").read_text())
+    with pytest.raises(ValueError):
+        sc.make_commit(repo, main_addons, mine, "Record", main_ref="main")
+    assert git(repo, "rev-parse", "HEAD") == checked
+    assert git(repo, "status", "--porcelain") == ""
 
 
 def test_a_bad_entry_makes_no_commit(tmp_path):
-    repo = make_pr_checkout(tmp_path)
-    before = git(repo, "rev-parse", "HEAD")
-    main_addons = tmp_path / "main_addons"
-    main_addons.mkdir()
+    repo, checked, main_head, main_addons = make_world(tmp_path)
     with pytest.raises(ValueError):
-        sc.make_commit(repo, main_addons, entry("bad", commit="main"), "Record")
-    assert git(repo, "rev-parse", "HEAD") == before
-    assert not (repo / "index.json").exists()
+        sc.make_commit(repo, main_addons, entry("bad", commit="main"), "Record", main_ref="main")
+    assert git(repo, "rev-parse", "HEAD") == checked
+    assert git(repo, "status", "--porcelain") == ""
 
 
 # ---- the workflows themselves (the parts that cannot be run here are at least checked for their locks)
@@ -84,3 +121,10 @@ def test_nothing_pushes_to_main_directly_any_more():
 
 def test_check_yml_is_read_only():
     assert "permissions:\n  contents: read" in workflow("check.yml")
+
+
+def test_a_cancelled_decide_run_is_started_again():
+    text = workflow("sandbox.yml")
+    assert "needs.decide.result == 'cancelled'" in text
+    assert "fetch-depth: 0" in text            # main is merged into the pull request, which needs history
+    assert text.count("refs/heads/main") >= 4   # prepare, run, decide and retry all refuse to run off main

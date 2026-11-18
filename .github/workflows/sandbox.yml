@@ -92,7 +92,7 @@ jobs:
       - name: Only from main
         run: '[ "$GITHUB_REF" = refs/heads/main ] || { echo "Runs only from main."; exit 1; }'
       - uses: actions/checkout@v4
-        with: { ref: main }
+        with: { ref: main, fetch-depth: 0 }   # the merge of main into the pull request needs the history
       - uses: actions/setup-python@v5
         with: { python-version: "3.11" }
       - uses: actions/download-artifact@v4
@@ -136,7 +136,7 @@ jobs:
           Listed meanwhile; it stays Listed until we have read it."
             fi
           fi
-          # ONE commit on the pull request's branch: the entry with its test result, and the rebuilt index.json.
+          # ONE commit on the pull request's branch: main merged in, plus the entry with its test result and the rebuilt index.json.
           # The scripts run from main (this checkout); the pull request's files are only read and committed to.
           python scripts/sandbox_record.py "$RUNNER_TEMP/entry.json" "$RUNNER_TEMP/v.json" > "$RUNNER_TEMP/new.json"
           BRANCH=$(gh pr view "$PR" --json headRefName --jq .headRefName)
@@ -144,11 +144,20 @@ jobs:
           NEW=$(python scripts/sandbox_commit.py --worktree "$RUNNER_TEMP/pr" --trusted-addons addons --entry "$RUNNER_TEMP/new.json")
           git -C "$RUNNER_TEMP/pr" push origin "HEAD:refs/heads/$BRANCH"   # a plain push: refused if anything was added meanwhile
           echo "$NEW" > "$RUNNER_TEMP/new_sha"
-          [ "$(gh api "repos/$REPO/commits/$NEW" --jq '[.parents[].sha] | join(",")')" = "$SHA" ] || { echo "Something was added to the branch after it was checked."; exit 1; }
+          [ "$(gh api "repos/$REPO/commits/$NEW" --jq '.parents[0].sha')" = "$SHA" ] || { echo "Something was added to the branch after it was checked."; exit 1; }
           # the one mark the main-branch rule asks for. Only GitHub Actions can post a check like this: a stolen personal token cannot.
           gh api -X POST "repos/$REPO/check-runs" -f name="addons/decided" -f head_sha="$NEW" -f status=completed -f conclusion=success \
             -f "output[title]=Test-run and checked" -f "output[summary]=Passed the guard and the test run."
-          gh pr merge "$PR" --squash --delete-branch --match-head-commit "$NEW"
+          # GitHub updates the pull request a moment after a push: wait until it shows our commit, then merge (retrying briefly)
+          for i in 1 2 3 4 5 6 7 8; do
+            [ "$(gh pr view "$PR" --json headRefOid --jq .headRefOid)" = "$NEW" ] && break
+            sleep 3
+          done
+          for i in 1 2 3; do
+            gh pr merge "$PR" --squash --delete-branch --match-head-commit "$NEW" && exit 0
+            sleep 5
+          done
+          echo "Could not merge."; exit 1
       - name: Close the pull request if this run could not finish
         if: failure()
         env:
@@ -162,3 +171,23 @@ jobs:
           if [ "$NOW" = "OPEN:$SHA" ] || [ "$NOW" = "OPEN:$NEW" ]; then
             gh pr close "$PR" --delete-branch --comment "Something went wrong on our side while testing this, so we closed it. Please send it again from the website in a few minutes." || true
           fi
+  # GitHub keeps one waiting decide run per queue and cancels the rest. A cancelled one would leave its pull request
+  # open and untouched forever, so it is started again here (only while the pull request is still the one that was checked).
+  retry:
+    needs: decide
+    if: ${{ always() && needs.decide.result == 'cancelled' }}
+    runs-on: ubuntu-latest
+    permissions: { actions: write, pull-requests: read }
+    steps:
+      - name: Only from main
+        run: '[ "$GITHUB_REF" = refs/heads/main ] || { echo "Runs only from main."; exit 1; }'
+      - name: Start it again
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          [ "$(gh pr view "$PR" --json state,headRefOid --jq '.state + .headRefOid')" = "OPEN$SHA" ] || { echo "The pull request moved on; nothing to restart."; exit 0; }
+          sleep 30
+          gh workflow run sandbox.yml --ref main -f pr="$PR" -f sha="$SHA"
