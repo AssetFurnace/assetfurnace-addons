@@ -3,18 +3,22 @@
     "id": "pedestal",
     "name": "Pedestal",
     "repo": "https://github.com/AssetFurnace/pedestal-addon.git",
-    "commit": "1d46e70975e848a0915d3d441b8eb693e09a3834",
+    "commit": "b832648154d5ae47f0c690b2a09ae781a71cc958",
     "author": {
-      "name": "AssetFurnace",
-      "url": "https://github.com/AssetFurnace"
+      "name": "Nikhil Shahane",
+      "url": "https://github.com/Bingeljell"
     },
-    "summary": "A round display stand from a height, a width and a number of steps.",
+    "summary": "A round display stand with height, width and step count.",
     "type": "tool",
     "tier": "listed",
     "runs": "local",
     "picture": "https://raw.githubusercontent.com/AssetFurnace/assetfurnace-addons/main/pictures/pedestal.jpg",
     "links": {
       "repo": "https://github.com/AssetFurnace/pedestal-addon"
+    },
+    "submitted_by": {
+      "github_login": "Bingeljell",
+      "github_id": "2819267"
     }
   }
 ]
