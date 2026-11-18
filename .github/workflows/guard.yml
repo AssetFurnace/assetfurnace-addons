@@ -1,9 +1,10 @@
 name: Guard pull requests
-# Pull requests here come from the website's bot. This closes direct ones, checks the rest, and merges a plain
-# Listed submission by itself. A person looks at anything else (Verified requests, odd changes).
+# Pull requests here come from the website's bot. This closes direct ones, checks the rest, and hands a plain Listed
+# submission to the sandbox (sandbox.yml), which test-runs the add-on and then merges it. A person looks at anything
+# else (Verified requests, odd changes).
 #
 # It runs from main (pull_request_target), never from the pull request's own files: from the pull request it only
-# COPIES data (addons/ and pictures/) into a temp folder and reads it. No code from a pull request is ever run.
+# COPIES data (addons/ and pictures/) into a temp folder and reads it. No code from a pull request is ever run here.
 #
 # Needs one repository variable: BOT_LOGINS = the GitHub account(s) the website's token belongs to, comma separated.
 # Until it is set, nothing is closed or merged.
@@ -11,7 +12,7 @@ on:
   pull_request_target:
     types: [opened, reopened, synchronize, labeled]
 permissions:
-  contents: write
+  contents: read
   pull-requests: write
   actions: write
 concurrency:
@@ -29,21 +30,8 @@ jobs:
         id: decide
         env:
           GH_TOKEN: ${{ github.token }}
-          PR: ${{ github.event.pull_request.number }}
-          AUTHOR: ${{ github.event.pull_request.user.login }}
-          SHA: ${{ github.event.pull_request.head.sha }}
-          BOTS: ${{ vars.BOT_LOGINS }}
-        run: |
-          set -euo pipefail
-          FILES=$(gh pr diff "$PR" --name-only | tr '\n' ' ')
-          LABELS=$(gh pr view "$PR" --json labels --jq '[.labels[].name] | join(",")')
-          mkdir -p "$RUNNER_TEMP/head"
-          git fetch --quiet origin "refs/pull/$PR/head"
-          git archive FETCH_HEAD addons pictures 2>/dev/null | tar -x -C "$RUNNER_TEMP/head" || true
-          python scripts/guard_pr.py --author "$AUTHOR" --bots "$BOTS" --files "$FILES" --labels "$LABELS" --head "$RUNNER_TEMP/head" > "$RUNNER_TEMP/verdict.json"
-          cat "$RUNNER_TEMP/verdict.json"
-          echo "action=$(jq -r .action "$RUNNER_TEMP/verdict.json")" >> "$GITHUB_OUTPUT"
-          jq -r .message "$RUNNER_TEMP/verdict.json" > "$RUNNER_TEMP/message.txt"
+          BOT_LOGINS: ${{ vars.BOT_LOGINS }}
+        run: scripts/ci_judge.sh "${{ github.event.pull_request.number }}" "${{ github.event.pull_request.user.login }}"
       - name: Close (not from the website)
         if: steps.decide.outputs.action == 'close'
         env: { GH_TOKEN: "${{ github.token }}", PR: "${{ github.event.pull_request.number }}" }
@@ -57,14 +45,10 @@ jobs:
       - name: Waiting for a person
         if: steps.decide.outputs.action == 'hold'
         run: echo "HOLD $(cat "$RUNNER_TEMP/message.txt")"
-      - name: Merge (Listed, all checks passed)
+      - name: Hand over to the sandbox
         if: steps.decide.outputs.action == 'merge'
         env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ github.event.pull_request.number }}
           SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          # merge only the exact version we just checked; a push made with the workflow token does not start
-          # other workflows, so start the index rebuild ourselves
-          gh pr merge "$PR" --squash --delete-branch --match-head-commit "$SHA"
-          gh workflow run publish-index.yml
+        run: gh workflow run sandbox.yml -f pr="$PR" -f sha="$SHA"

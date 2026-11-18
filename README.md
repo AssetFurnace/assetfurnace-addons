@@ -8,7 +8,7 @@ Add-ons run code on your machine. Read the labels.
 | Label | What it means |
 |-------|---------------|
 | **Verified** | We read the code, ran it and checked its licences. Pinned to that exact version. A new version is checked again. |
-| **Listed** | The author sent it in and it passed automatic checks: its entry and its `addon.json` at that exact version passed our automatic checks. We did **not** read the code. Use at your own risk. |
+| **Listed** | The author sent it in and it passed automatic checks: its entry and its `addon.json` at that exact version passed our automatic checks, and we test-ran it on a clean machine and it made a real model. We did **not** read the code. If we could not test-run it (it downloads models, or needs a file as input), it says **not run-checked**. Use at your own risk. |
 | **Unknown** | Not on this list. We have never looked at it. |
 
 ## Submit your add-on
@@ -21,7 +21,7 @@ closed automatically.
 1. **Build and test it.** Follow the [author guide](https://github.com/Bingeljell/image-to-3dlab/blob/main/docs/add-ons.md).
    Install it from your own repo with `./lab addon add --unlisted <repo>@<commit>` and run it in the studio.
 2. **Send it** on the page above. The name, summary, licence and `runs` come from your `addon.json` at that version.
-3. **Checks run on their own.** If they pass, it is merged and you are Listed. If not, the pull request says what to fix.
+3. **Checks run on their own,** then your add-on is installed and run on a throwaway machine with plain test values. If it all passes, it is merged and you are Listed. If not, the pull request says what to fix.
 4. **Want Verified?** Tick the box on the page. We read the code and run it on test inputs; until then it stays Listed.
 
 A new version of your add-on is a new submission. Nothing updates by itself. A new version of a Verified add-on is not
@@ -50,3 +50,12 @@ Open an issue here with the add-on's name and what went wrong.
 ```
 python scripts/check_entry.py addons/your-id.json
 ```
+
+## How the test run works
+
+A fresh machine is started for each submission and deleted afterwards. It has no passwords or access to anything of
+ours. Your add-on is installed with the studio's own `addon add` command and each tool is run once with plain test
+values (the middle of a number's range, the first choice, `test` for text). The model it makes is then checked on a
+separate machine: it must be a real `.glb` with something in it. Add-ons that download models, need a picture or model
+file as input, need a newer Blender than the test machine's, or make something other than `.glb` cannot be run this
+way, so they are listed as **not run-checked**.

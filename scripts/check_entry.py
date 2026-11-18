@@ -51,6 +51,9 @@ def check_entry(path: Path, data: object) -> list[str]:
     by = data.get("submitted_by")
     if by is not None and not (isinstance(by, dict) and by.get("github_login") and by.get("github_id")):
         problems.append("submitted_by needs github_login and github_id (the website writes it, do not add it by hand)")
+    check = data.get("run_check")
+    if check is not None and not (isinstance(check, dict) and check.get("status") in ("passed", "not_run")):
+        problems.append("run_check must say passed or not_run (the checks write it, do not add it by hand)")
     if data.get("picture"):
         problems.extend(check_picture(path, addon_id, str(data["picture"])))
     return problems
