@@ -22,14 +22,14 @@ def tree(root: Path, entry=ENTRY, picture=True):
     return root
 
 
-def run(tmp_path, entry=ENTRY, files=FILES, author="the-bot", bots=("the-bot",), labels=(), main_entry=None, **kw):
+def run(tmp_path, entry=ENTRY, files=FILES, author="the-bot", bots=("the-bot",), main_entry=None, **kw):
     head = tree(tmp_path / "head", entry)
     main = tmp_path / "main"
     (main / "addons").mkdir(parents=True, exist_ok=True)
     if main_entry is not None:
         (main / "addons" / "cool.json").write_text(json.dumps(main_entry))
     kw.setdefault("offline", True)
-    return gp.judge(author, list(bots), files, list(labels), head, main, **kw)
+    return gp.judge(author, list(bots), files, head, main, **kw)
 
 
 def test_a_clean_listed_submission_from_the_bot_is_merged(tmp_path):
@@ -65,7 +65,7 @@ def test_a_bad_picture_fails(tmp_path):
     (head / "pictures" / "cool.png").write_bytes(b"not a picture")
     main = tmp_path / "main"
     main.mkdir()
-    v = gp.judge("the-bot", ["the-bot"], FILES, [], head, main, offline=True)
+    v = gp.judge("the-bot", ["the-bot"], FILES, head, main, offline=True)
     assert v["action"] == "fail" and "real PNG" in v["message"]
 
 
@@ -91,8 +91,25 @@ def test_a_new_version_of_a_verified_add_on_waits(tmp_path):
     assert run(tmp_path, main_entry={**ENTRY, "tier": "verified"})["action"] == "hold"
 
 
-def test_a_verified_request_waits(tmp_path):
-    assert run(tmp_path, labels=["verify-request"])["action"] == "hold"
+def test_a_verified_request_is_still_listed_meanwhile(tmp_path):
+    assert run(tmp_path, entry={**ENTRY, "verify_requested": True})["action"] == "merge"
+
+
+def test_a_merge_verdict_names_the_add_on_even_when_other_entries_are_in_the_folder(tmp_path):
+    head = tree(tmp_path / "head")
+    (head / "addons" / "aaa-first.json").write_text(json.dumps({**ENTRY, "id": "aaa-first"}))   # git archive copies every entry
+    (tmp_path / "main").mkdir()
+    v = gp.judge("the-bot", ["the-bot"], FILES, head, tmp_path / "main", offline=True)
+    assert v["action"] == "merge" and v["id"] == "cool"
+
+
+def test_an_entry_that_arrives_with_a_test_result_waits_for_a_person(tmp_path):
+    assert run(tmp_path, entry={**ENTRY, "run_check": {"status": "passed"}})["action"] == "hold"
+
+
+def test_a_rename_shows_both_names_so_it_needs_a_person(tmp_path):
+    # `previous_filename` is listed too (ci_judge.sh), so a rename looks like two entries
+    assert run(tmp_path, files=FILES + ["addons/victim.json"])["action"] == "hold"
 
 
 def test_a_symlinked_entry_is_not_read(tmp_path):
@@ -102,7 +119,7 @@ def test_a_symlinked_entry_is_not_read(tmp_path):
     (head / "addons" / "cool.json").symlink_to(secret)
     main = tmp_path / "main"
     main.mkdir()
-    assert gp.judge("the-bot", ["the-bot"], FILES, [], head, main, offline=True)["action"] == "fail"
+    assert gp.judge("the-bot", ["the-bot"], FILES, head, main, offline=True)["action"] == "fail"
 
 
 def test_the_manifest_check_runs_online(tmp_path):
@@ -118,5 +135,5 @@ def test_a_symlinked_picture_is_refused(tmp_path):
     (head / "pictures" / "cool.png").symlink_to(secret)
     main = tmp_path / "main"
     main.mkdir()
-    v = gp.judge("the-bot", ["the-bot"], FILES, [], head, main, offline=True)
+    v = gp.judge("the-bot", ["the-bot"], FILES, head, main, offline=True)
     assert v["action"] == "fail" and "Links" in v["message"]

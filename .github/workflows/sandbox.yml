@@ -1,0 +1,193 @@
+name: Test-run a submission
+# Started by guard.yml for a submission whose entry passed every check. Three jobs, kept apart on purpose:
+#   prepare  (trusted)   works out how to test the add-on. Reads data only.
+#   run      (UNTRUSTED) installs and runs the author's code on this throwaway machine. No token, no secrets, no cache,
+#                        and it can only hand back files. The machine is deleted afterwards.
+#   decide   (trusted)   on another machine: re-checks every file the run produced, records the result in the entry,
+#                        and merges. It never runs anything from the add-on.
+# An add-on that cannot be run here (downloads models, needs a file as input, ...) is not an error: it is listed as
+# "not run-checked", and says so.
+on:
+  workflow_dispatch:
+    inputs:
+      pr: { description: "Pull request number", required: true }
+      sha: { description: "The version of the pull request that was checked", required: true }
+concurrency:
+  group: sandbox-${{ inputs.pr }}
+  cancel-in-progress: true
+permissions: {}
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions: { contents: read, pull-requests: read }
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      runnable: ${{ steps.plan.outputs.runnable }}
+    steps:
+      - name: Only from main
+        run: '[ "$GITHUB_REF" = refs/heads/main ] || { echo "Runs only from main."; exit 1; }'
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Plan
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BOT_LOGINS: ${{ vars.BOT_LOGINS }}
+          PR: ${{ inputs.pr }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          set -euo pipefail
+          [ "$(gh pr view "$PR" --json state,headRefOid --jq '.state + .headRefOid')" = "OPEN$SHA" ] || { echo "The pull request changed or closed since it was checked."; exit 1; }
+          AUTHOR=$(gh pr view "$PR" --json author --jq .author.login)
+          scripts/ci_judge.sh "$PR" "$AUTHOR" "$SHA"
+          [ "$(jq -r .action "$RUNNER_TEMP/verdict.json")" = "merge" ] || { echo "No longer a plain Listed submission."; exit 1; }
+          # the add-on the guard named, never a guess from the folder (the folder holds every entry)
+          ID=$(jq -r .id "$RUNNER_TEMP/verdict.json")
+          python scripts/sandbox_plan.py "$RUNNER_TEMP/head/addons/$ID.json" > "$RUNNER_TEMP/plan.json"
+          echo "plan=$(jq -c . "$RUNNER_TEMP/plan.json")" >> "$GITHUB_OUTPUT"
+          echo "runnable=$(jq -r .runnable "$RUNNER_TEMP/plan.json")" >> "$GITHUB_OUTPUT"
+  run:
+    needs: prepare
+    if: needs.prepare.outputs.runnable == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions: {}
+    steps:
+      - name: Only from main
+        run: '[ "$GITHUB_REF" = refs/heads/main ] || { echo "Runs only from main."; exit 1; }'
+      - uses: actions/checkout@v4
+        with: { ref: main, persist-credentials: false }
+      - uses: actions/checkout@v4
+        with: { repository: Bingeljell/image-to-3dlab, path: lab, persist-credentials: false }
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - name: Write the plan
+        env: { PLAN: "${{ needs.prepare.outputs.plan }}" }
+        run: printf '%s' "$PLAN" > "$RUNNER_TEMP/plan.json"
+      - name: Blender (if the add-on needs it)
+        run: |
+          if [ "$(jq -r .blender "$RUNNER_TEMP/plan.json")" != "null" ]; then
+            sudo apt-get update -y && sudo apt-get install -y libxi6 libxrender1 libgl1 libxkbcommon0 libxxf86vm1 libsm6 libxfixes3
+            curl -fsSL -o "$RUNNER_TEMP/blender.tar.xz" https://download.blender.org/release/Blender4.2/blender-4.2.23-linux-x64.tar.xz
+            echo "bea0eb3146be13eae6225409a117b215184f41b7f79e799f97cb3abb8f6dc404  $RUNNER_TEMP/blender.tar.xz" | sha256sum -c -
+            tar -xf "$RUNNER_TEMP/blender.tar.xz" -C "$RUNNER_TEMP"
+            echo "I2L_BLENDER=$RUNNER_TEMP/blender-4.2.23-linux-x64/blender" >> "$GITHUB_ENV"
+          fi
+      - name: Install and run the add-on
+        run: python scripts/sandbox_exec.py "$RUNNER_TEMP/plan.json" --lab lab --out "$RUNNER_TEMP/out"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: sandbox-out, path: "${{ runner.temp }}/out", if-no-files-found: ignore, retention-days: 3 }
+      # NOTE: never add a cache (actions/cache) to this job. Code from the add-on can outlive its step and could poison it.
+  decide:
+    needs: [prepare, run]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions: { contents: write, pull-requests: write, issues: write, checks: write }
+    # one at a time: each merge changes index.json, and the next one must build on it
+    concurrency: { group: decide-global, cancel-in-progress: false }
+    steps:
+      - name: Only from main
+        run: '[ "$GITHUB_REF" = refs/heads/main ] || { echo "Runs only from main."; exit 1; }'
+      - uses: actions/checkout@v4
+        with: { ref: main, fetch-depth: 0 }   # the merge of main into the pull request needs the history
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.11" }
+      - uses: actions/download-artifact@v4
+        if: needs.prepare.outputs.runnable == 'true'
+        continue-on-error: true
+        with: { name: sandbox-out, path: "${{ runner.temp }}/res" }
+      - name: Judge, record and merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BOT_LOGINS: ${{ vars.BOT_LOGINS }}
+          PR: ${{ inputs.pr }}
+          SHA: ${{ inputs.sha }}
+          REPO: ${{ github.repository }}
+          PLAN: ${{ needs.prepare.outputs.plan }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/res"
+          printf '%s' "$PLAN" > "$RUNNER_TEMP/plan.json"
+          python scripts/sandbox_verdict.py "$RUNNER_TEMP/plan.json" "$RUNNER_TEMP/res" > "$RUNNER_TEMP/v.json"
+          STATUS=$(jq -r .status "$RUNNER_TEMP/v.json")
+          if [ "$STATUS" = "failed" ]; then
+            gh pr close "$PR" --delete-branch --comment "$(printf 'We test-ran your add-on on a clean machine and it did not pass:\n\n%s\n\nFix it, then send a new version from the website.' "$(jq -r '.problems[] | "- " + .' "$RUNNER_TEMP/v.json")")"
+            exit 1
+          fi
+          # the pull request must still be exactly what was checked, and still a plain Listed submission
+          AUTHOR=$(gh pr view "$PR" --json author --jq .author.login)
+          scripts/ci_judge.sh "$PR" "$AUTHOR" "$SHA"
+          [ "$(jq -r .action "$RUNNER_TEMP/verdict.json")" = "merge" ] || { echo "No longer a plain Listed submission."; exit 1; }
+          ID=$(jq -r .id "$RUNNER_TEMP/verdict.json")
+          [ "$ID" = "$(jq -r .id "$RUNNER_TEMP/plan.json")" ] || { echo "The test run was for a different add-on."; exit 1; }
+          git fetch -q origin "$SHA"
+          git show "$SHA:addons/$ID.json" > "$RUNNER_TEMP/entry.json"
+          # a request for a Verified review becomes an issue for us BEFORE anything is merged, so it cannot be lost
+          if [ "$(jq -r '.verify_requested // false' "$RUNNER_TEMP/entry.json")" = "true" ]; then
+            gh label create verify-request --color 0E8A16 --description "The author asked for a Verified review" 2>/dev/null || true
+            TITLE="Verified review requested: $ID ($(jq -r '.commit[0:7]' "$RUNNER_TEMP/entry.json"))"
+            if [ "$(gh issue list --label verify-request --state open --search "\"$TITLE\" in:title" --json number --jq length)" = "0" ]; then
+              gh issue create --label verify-request --title "$TITLE" --body "Author: $(jq -r .submitted_by.github_login "$RUNNER_TEMP/entry.json")
+          Repo: $(jq -r .links.repo "$RUNNER_TEMP/entry.json")
+          Version: $(jq -r .commit "$RUNNER_TEMP/entry.json")
+          Listed meanwhile; it stays Listed until we have read it."
+            fi
+          fi
+          # ONE commit on the pull request's branch: main merged in, plus the entry with its test result and the rebuilt index.json.
+          # The scripts run from main (this checkout); the pull request's files are only read and committed to.
+          python scripts/sandbox_record.py "$RUNNER_TEMP/entry.json" "$RUNNER_TEMP/v.json" > "$RUNNER_TEMP/new.json"
+          BRANCH=$(gh pr view "$PR" --json headRefName --jq .headRefName)
+          git worktree add -q --detach "$RUNNER_TEMP/pr" "$SHA"
+          NEW=$(python scripts/sandbox_commit.py --worktree "$RUNNER_TEMP/pr" --trusted-addons addons --entry "$RUNNER_TEMP/new.json")
+          git -C "$RUNNER_TEMP/pr" push origin "HEAD:refs/heads/$BRANCH"   # a plain push: refused if anything was added meanwhile
+          echo "$NEW" > "$RUNNER_TEMP/new_sha"
+          [ "$(gh api "repos/$REPO/commits/$NEW" --jq '.parents[0].sha')" = "$SHA" ] || { echo "Something was added to the branch after it was checked."; exit 1; }
+          # the one mark the main-branch rule asks for. Only GitHub Actions can post a check like this: a stolen personal token cannot.
+          gh api -X POST "repos/$REPO/check-runs" -f name="addons/decided" -f head_sha="$NEW" -f status=completed -f conclusion=success \
+            -f "output[title]=Test-run and checked" -f "output[summary]=Passed the guard and the test run."
+          # GitHub updates the pull request a moment after a push: wait until it shows our commit, then merge (retrying briefly)
+          for i in 1 2 3 4 5 6 7 8; do
+            [ "$(gh pr view "$PR" --json headRefOid --jq .headRefOid)" = "$NEW" ] && break
+            sleep 3
+          done
+          for i in 1 2 3; do
+            gh pr merge "$PR" --squash --delete-branch --match-head-commit "$NEW" && exit 0
+            sleep 5
+          done
+          echo "Could not merge."; exit 1
+      - name: Close the pull request if this run could not finish
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ inputs.pr }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          # only while the pull request is still the one we were checking (or our own commit on top of it); a newer one is left alone
+          NEW=$(cat "$RUNNER_TEMP/new_sha" 2>/dev/null || echo none)
+          NOW=$(gh pr view "$PR" --json state,headRefOid --jq '.state + ":" + .headRefOid')
+          if [ "$NOW" = "OPEN:$SHA" ] || [ "$NOW" = "OPEN:$NEW" ]; then
+            gh pr close "$PR" --delete-branch --comment "Something went wrong on our side while testing this, so we closed it. Please send it again from the website in a few minutes." || true
+          fi
+  # GitHub keeps one waiting decide run per queue and cancels the rest. A cancelled one would leave its pull request
+  # open and untouched forever, so it is started again here (only while the pull request is still the one that was checked).
+  retry:
+    needs: decide
+    if: ${{ always() && needs.decide.result == 'cancelled' }}
+    runs-on: ubuntu-latest
+    permissions: { actions: write, pull-requests: read }
+    steps:
+      - name: Only from main
+        run: '[ "$GITHUB_REF" = refs/heads/main ] || { echo "Runs only from main."; exit 1; }'
+      - name: Start it again
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR: ${{ inputs.pr }}
+          SHA: ${{ inputs.sha }}
+        run: |
+          [ "$(gh pr view "$PR" --json state,headRefOid --jq '.state + .headRefOid')" = "OPEN$SHA" ] || { echo "The pull request moved on; nothing to restart."; exit 0; }
+          sleep 30
+          gh workflow run sandbox.yml --ref main -f pr="$PR" -f sha="$SHA"

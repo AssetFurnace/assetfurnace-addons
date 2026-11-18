@@ -5,7 +5,9 @@ Actions: close (not from our bot), fail (entry or picture has a problem, tell th
 look; nothing is merged), merge (all checks passed, a plain Listed submission).
 
 Only data is read from the pull request (json and pictures, copied into --head). No code from it is ever run.
-Usage: guard_pr.py --author LOGIN --bots a,b --files "addons/x.json pictures/x.png" --labels "x,y" --head DIR [--offline]
+Usage: guard_pr.py --author LOGIN --bots a,b --files "addons/x.json pictures/x.png" --head DIR [--offline]
+
+A `merge` verdict names the one add-on it is about ("id"): later steps must use that, never a guess from the folder.
 """
 
 from __future__ import annotations
@@ -24,8 +26,8 @@ ENTRY = re.compile(r"^addons/([a-z0-9][a-z0-9_-]*)\.json$")
 PICTURE = re.compile(r"^pictures/([a-z0-9][a-z0-9_-]*)\.(png|jpg|jpeg)$")
 
 
-def verdict(action: str, message: str) -> dict:
-    return {"action": action, "message": message}
+def verdict(action: str, message: str, **extra) -> dict:
+    return {"action": action, "message": message, **extra}
 
 
 def read_json(path: Path):
@@ -37,7 +39,7 @@ def read_json(path: Path):
         return None
 
 
-def judge(author: str, bots: list[str], files: list[str], labels: list[str], head: Path, main: Path,
+def judge(author: str, bots: list[str], files: list[str], head: Path, main: Path,
           offline: bool = False, fetch=None) -> dict:
     """What to do with one pull request. `head` holds the pull request's addons/ and pictures/; `main` is this repo's main."""
     if not bots:
@@ -65,6 +67,8 @@ def judge(author: str, bots: list[str], files: list[str], labels: list[str], hea
     if problems:
         return verdict("fail", "These need fixing:\n" + "\n".join(f"- {p}" for p in problems))
 
+    if "run_check" in entry:
+        return verdict("hold", "This entry arrived with a test result already written in it. Only the test run writes that, so a person has to look at it.")
     by = entry.get("submitted_by")
     if not (isinstance(by, dict) and by.get("github_id") and by.get("github_login")):
         return verdict("hold", "No submitter is recorded in this entry (it did not come from the site), so a person has to look at it.")
@@ -78,9 +82,7 @@ def judge(author: str, bots: list[str], files: list[str], labels: list[str], hea
             return verdict("hold", f"The name {addon_id} already belongs to someone else, so a person has to look at this entry.")
         if before.get("tier") == "verified":
             return verdict("hold", "This is a new version of a Verified add-on. It stays on the old version until we have read the new one.")
-    if "verify-request" in labels:
-        return verdict("hold", "The author asked for a Verified review. It waits for one, and is not merged until then.")
-    return verdict("merge", "Checks passed. Merging, so it is Listed.")
+    return verdict("merge", "Checks passed. It goes to the test run, then it is Listed.", id=addon_id)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -88,13 +90,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--author", required=True)
     p.add_argument("--bots", default="")
     p.add_argument("--files", default="")
-    p.add_argument("--labels", default="")
     p.add_argument("--head", type=Path, required=True)
     p.add_argument("--main", type=Path, default=Path("."))
     p.add_argument("--offline", action="store_true")
     a = p.parse_args(argv)
     split = lambda s: [x for x in re.split(r"[,\s]+", s) if x]  # noqa: E731
-    print(json.dumps(judge(a.author, split(a.bots), split(a.files), split(a.labels), a.head, a.main, a.offline)))
+    print(json.dumps(judge(a.author, split(a.bots), split(a.files), a.head, a.main, a.offline)))
     return 0
 
 
