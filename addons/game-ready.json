@@ -19,5 +19,9 @@
     "github_login": "Ahnyth",
     "github_id": "224684153"
   },
-  "verify_requested": true
+  "run_check": {
+    "status": "not_run",
+    "date": "2026-11-19",
+    "reason": "the tool figure needs a file as input, which we cannot give it"
+  }
 }
