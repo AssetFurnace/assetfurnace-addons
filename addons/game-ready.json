@@ -1,0 +1,27 @@
+{
+  "id": "game-ready",
+  "name": "Game-ready",
+  "repo": "https://github.com/Ahnyth/assetfurnace-game-ready.git",
+  "commit": "f93dd54369ab089d396f2af054fe6ffbee94ab78",
+  "author": {
+    "name": "Ahnyth",
+    "url": "https://github.com/Ahnyth"
+  },
+  "summary": "Takes a rigged figure or a finished prop to game-ready in one step: one atlas, real size, engine bone names, the hidden inner wall dropped and checked in motion, LODs and a collider for props.",
+  "type": "tool",
+  "tier": "listed",
+  "runs": "local",
+  "picture": "pictures/game-ready.jpg",
+  "links": {
+    "repo": "https://github.com/Ahnyth/assetfurnace-game-ready"
+  },
+  "submitted_by": {
+    "github_login": "Ahnyth",
+    "github_id": "224684153"
+  },
+  "run_check": {
+    "status": "not_run",
+    "date": "2026-11-19",
+    "reason": "the tool figure needs a file as input, which we cannot give it"
+  }
+}
