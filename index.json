@@ -40,7 +40,7 @@
     },
     "summary": "Takes a rigged figure or a finished prop to game-ready in one step: one atlas, real size, engine bone names, the hidden inner wall dropped and checked in motion, LODs and a collider for props.",
     "type": "tool",
-    "tier": "listed",
+    "tier": "verified",
     "runs": "local",
     "picture": "https://raw.githubusercontent.com/AssetFurnace/assetfurnace-addons/main/pictures/game-ready.jpg",
     "links": {
@@ -93,7 +93,7 @@
     },
     "summary": "A detailed bus, metro car or van from a few numbers: body, wheels and doors as parts on their pivots, one atlas, no picture needed.",
     "type": "tool",
-    "tier": "listed",
+    "tier": "verified",
     "runs": "local",
     "picture": "https://raw.githubusercontent.com/AssetFurnace/assetfurnace-addons/main/pictures/vehicle-kit.jpg",
     "links": {

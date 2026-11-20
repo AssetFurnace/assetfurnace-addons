@@ -9,7 +9,7 @@
   },
   "summary": "A detailed bus, metro car or van from a few numbers: body, wheels and doors as parts on their pivots, one atlas, no picture needed.",
   "type": "tool",
-  "tier": "listed",
+  "tier": "verified",
   "runs": "local",
   "picture": "pictures/vehicle-kit.jpg",
   "links": {

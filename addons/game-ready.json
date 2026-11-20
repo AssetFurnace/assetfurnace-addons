@@ -9,7 +9,7 @@
   },
   "summary": "Takes a rigged figure or a finished prop to game-ready in one step: one atlas, real size, engine bone names, the hidden inner wall dropped and checked in motion, LODs and a collider for props.",
   "type": "tool",
-  "tier": "listed",
+  "tier": "verified",
   "runs": "local",
   "picture": "pictures/game-ready.jpg",
   "links": {
