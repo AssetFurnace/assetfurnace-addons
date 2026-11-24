@@ -19,5 +19,9 @@
     "github_login": "Ahnyth",
     "github_id": "224684153"
   },
-  "verify_requested": true
+  "run_check": {
+    "status": "not_run",
+    "date": "2026-11-24",
+    "reason": "it downloads models, which a throwaway machine cannot do"
+  }
 }
