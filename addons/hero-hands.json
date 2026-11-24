@@ -1,0 +1,27 @@
+{
+  "id": "hero-hands",
+  "name": "Hero hands",
+  "repo": "https://github.com/Ahnyth/assetfurnace-hero-hands.git",
+  "commit": "e31da8916adb0f444fa0b87694995fb38197dbee",
+  "author": {
+    "name": "Ahnyth",
+    "url": "https://github.com/Ahnyth"
+  },
+  "summary": "Gives a rigged figure hands with real fingers: each hand is redrawn flat from the front picture, built on its own with Pixal3D, checked for five digits and grafted on at the wrist, keeping the skeleto",
+  "type": "tool",
+  "tier": "listed",
+  "runs": "local",
+  "picture": "pictures/hero-hands.jpg",
+  "links": {
+    "repo": "https://github.com/Ahnyth/assetfurnace-hero-hands"
+  },
+  "submitted_by": {
+    "github_login": "Ahnyth",
+    "github_id": "224684153"
+  },
+  "run_check": {
+    "status": "not_run",
+    "date": "2026-11-24",
+    "reason": "it downloads models, which a throwaway machine cannot do"
+  }
+}
