@@ -10,6 +10,7 @@ PR="$1"; AUTHOR="$2"; EXPECT="${3:-}"; TMP="${RUNNER_TEMP:-/tmp}"
 FILES=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' | tr '\n' ' ')
 CROSS=$(gh pr view "$PR" --json isCrossRepository --jq .isCrossRepository)
 BASE=$(gh pr view "$PR" --json baseRefName --jq .baseRefName)
+ASSOC=$(gh api "repos/$GITHUB_REPOSITORY/pulls/$PR" --jq .author_association)
 rm -rf "$TMP/head"; mkdir -p "$TMP/head"
 git fetch --quiet origin "refs/pull/$PR/head"
 GOT=$(git rev-parse FETCH_HEAD)
@@ -21,7 +22,7 @@ elif [ "$BASE" != "main" ]; then
 elif [ "$CROSS" = "true" ] && [ "$(printf %s "${BOT_LOGINS:-}" | tr ',' '\n' | grep -cix "$AUTHOR" || true)" != "0" ]; then
   echo '{"action": "hold", "message": "This pull request comes from a fork, so a person has to look at it."}' > "$TMP/verdict.json"
 else
-  python scripts/guard_pr.py --author "$AUTHOR" --bots "${BOT_LOGINS:-}" --files "$FILES" --head "$TMP/head" ${GUARD_OFFLINE:+--offline} > "$TMP/verdict.json"
+  python scripts/guard_pr.py --author "$AUTHOR" --association "$ASSOC" --bots "${BOT_LOGINS:-}" --files "$FILES" --head "$TMP/head" ${GUARD_OFFLINE:+--offline} > "$TMP/verdict.json"
 fi
 cat "$TMP/verdict.json"
 jq -r .message "$TMP/verdict.json" > "$TMP/message.txt"

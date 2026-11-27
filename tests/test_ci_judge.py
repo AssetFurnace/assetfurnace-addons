@@ -53,6 +53,7 @@ def world(tmp_path, changed=("cool",), existing=("aaa",), files_json=None):
     bindir.mkdir()
     (bindir / "gh").write_text(f"""#!/usr/bin/env bash
 case "$*" in
+  *author_association*) echo "${{PR_ASSOC:-NONE}}";;
   api*) echo '{json.dumps(files)}' | jq -r '.[] | .filename, (.previous_filename // empty)';;
   *baseRefName*) echo "${{PR_BASE:-main}}";;
   *isCrossRepository*) echo false;;
@@ -65,12 +66,12 @@ esac
     return work, bindir, sha
 
 
-def judge(tmp_path, expect=None, **kw):
+def judge(tmp_path, expect=None, author="the-bot", assoc="NONE", **kw):
     work, bindir, sha = world(tmp_path, **kw)
     temp = tmp_path / "tmp"
     temp.mkdir()
-    env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}", "RUNNER_TEMP": str(temp), "GITHUB_REPOSITORY": "AssetFurnace/assetfurnace-addons", "BOT_LOGINS": "the-bot", "GUARD_OFFLINE": "1"}
-    args = ["bash", "scripts/ci_judge.sh", "7", "the-bot"] + ([sha if expect is True else expect] if expect else [])
+    env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}", "RUNNER_TEMP": str(temp), "GITHUB_REPOSITORY": "AssetFurnace/assetfurnace-addons", "BOT_LOGINS": "the-bot", "GUARD_OFFLINE": "1", "PR_ASSOC": assoc}
+    args = ["bash", "scripts/ci_judge.sh", "7", author] + ([sha if expect is True else expect] if expect else [])
     done = subprocess.run(args, cwd=work, env=env, capture_output=True, text=True)
     assert done.returncode == 0, done.stderr
     return json.loads((temp / "verdict.json").read_text())
@@ -99,3 +100,11 @@ def test_a_pull_request_aimed_at_another_branch_waits_for_a_person(tmp_path, mon
     monkeypatch.setenv("PR_BASE", "some-other-branch")
     verdict = judge(tmp_path)
     assert verdict["action"] == "hold" and "not aimed at main" in verdict["message"]
+
+
+def test_a_team_member_s_pull_request_waits_for_a_person(tmp_path):
+    assert judge(tmp_path, author="Bingeljell", assoc="MEMBER")["action"] == "hold"
+
+
+def test_an_outsider_s_pull_request_is_still_closed(tmp_path):
+    assert judge(tmp_path, author="stranger", assoc="CONTRIBUTOR")["action"] == "close"
