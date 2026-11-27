@@ -41,6 +41,16 @@ def test_anyone_else_is_closed_with_the_submit_link(tmp_path):
     assert v["action"] == "close" and "assetfurnace.com/add-ons/submit" in v["message"]
 
 
+def test_a_member_of_the_org_is_held_for_a_person_not_closed(tmp_path):
+    for assoc in ("MEMBER", "OWNER", "member"):
+        assert run(tmp_path, author="Bingeljell", association=assoc)["action"] == "hold"
+
+
+def test_a_collaborator_or_contributor_is_still_closed(tmp_path):
+    for assoc in ("COLLABORATOR", "CONTRIBUTOR", "NONE", ""):
+        assert run(tmp_path, author="stranger", association=assoc)["action"] == "close"
+
+
 def test_author_name_match_ignores_case(tmp_path):
     assert run(tmp_path, author="The-Bot")["action"] == "merge"
 

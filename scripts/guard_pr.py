@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Decide what to do with a pull request on this list. Prints one line of JSON: {"action": ..., "message": ...}.
 
-Actions: close (not from our bot), fail (entry or picture has a problem, tell the author), hold (a person has to
+Actions: close (not from our bot or a member of the AssetFurnace org), fail (entry or picture has a problem, tell the author), hold (a person has to
 look; nothing is merged), merge (all checks passed, a plain Listed submission).
 
 Only data is read from the pull request (json and pictures, copied into --head). No code from it is ever run.
-Usage: guard_pr.py --author LOGIN --bots a,b --files "addons/x.json pictures/x.png" --head DIR [--offline]
+Usage: guard_pr.py --author LOGIN [--association MEMBER] --bots a,b --files "addons/x.json pictures/x.png" --head DIR [--offline]
 
 A `merge` verdict names the one add-on it is about ("id"): later steps must use that, never a guess from the folder.
 """
@@ -39,12 +39,17 @@ def read_json(path: Path):
         return None
 
 
+MAINTAINERS = {"OWNER", "MEMBER"}  # GitHub's author_association for people in the AssetFurnace org
+
+
 def judge(author: str, bots: list[str], files: list[str], head: Path, main: Path,
-          offline: bool = False, fetch=None) -> dict:
+          offline: bool = False, fetch=None, association: str = "") -> dict:
     """What to do with one pull request. `head` holds the pull request's addons/ and pictures/; `main` is this repo's main."""
     if not bots:
         return verdict("hold", "The list of accepted submitters is not set up yet, so nothing is closed or merged.")
     if author.lower() not in {b.lower() for b in bots}:
+        if association.upper() in MAINTAINERS:
+            return verdict("hold", "A change from the AssetFurnace team: a person reviews and merges it.")
         return verdict("close", f"Thanks for the interest! Add-ons are submitted at {SUBMIT_URL} (sign in with GitHub, send your repo link and version). Pull requests made directly here are closed automatically.")
 
     entries = [f for f in files if ENTRY.match(f)]
@@ -88,6 +93,7 @@ def judge(author: str, bots: list[str], files: list[str], head: Path, main: Path
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--author", required=True)
+    p.add_argument("--association", default="")
     p.add_argument("--bots", default="")
     p.add_argument("--files", default="")
     p.add_argument("--head", type=Path, required=True)
@@ -95,7 +101,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--offline", action="store_true")
     a = p.parse_args(argv)
     split = lambda s: [x for x in re.split(r"[,\s]+", s) if x]  # noqa: E731
-    print(json.dumps(judge(a.author, split(a.bots), split(a.files), a.head, a.main, a.offline)))
+    print(json.dumps(judge(a.author, split(a.bots), split(a.files), a.head, a.main, a.offline, association=a.association)))
     return 0
 
 
